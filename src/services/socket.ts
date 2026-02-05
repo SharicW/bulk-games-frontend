@@ -3,7 +3,7 @@ import type { ClientGameState, PlayerAction, CreateLobbyResponse, JoinLobbyRespo
 
 const SOCKET_URL = import.meta.env.PROD 
   ? window.location.origin 
-  : 'bulk-games-backend-production.up.railway.app';
+  : 'https://bulk-games-backend-production.up.railway.app/';
 
 class PokerSocket {
   private socket: Socket | null = null;
@@ -159,4 +159,5 @@ class PokerSocket {
 }
 
 export const pokerSocket = new PokerSocket();
+
 
