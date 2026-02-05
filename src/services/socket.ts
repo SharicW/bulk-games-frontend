@@ -1,9 +1,10 @@
 import { io, Socket } from 'socket.io-client';
 import type { ClientGameState, PlayerAction, CreateLobbyResponse, JoinLobbyResponse } from '../types/poker';
 
-const SOCKET_URL = import.meta.env.PROD 
-  ? window.location.origin 
-  : 'https://bulk-games-backend-production.up.railway.app/';
+const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || 
+                  import.meta.env.PROD 
+                    ? 'https://bulk-games-backend-production.up.railway.app'
+                    : 'http://localhost:3001'; // локалка
 
 class PokerSocket {
   private socket: Socket | null = null;
@@ -159,5 +160,6 @@ class PokerSocket {
 }
 
 export const pokerSocket = new PokerSocket();
+
 
 
