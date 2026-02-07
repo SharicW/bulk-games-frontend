@@ -2,8 +2,8 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import MainMenu from './pages/MainMenu'
 import Profile from './pages/Profile'
-import GamePlaceholder from './pages/GamePlaceholder'
 import Poker from './pages/Poker'
+import Uno from './pages/Uno'
 import { AuthProvider } from './context/AuthContext'
 
 function AppContent() {
@@ -11,9 +11,14 @@ function AppContent() {
   
   // Poker page renders standalone (no sidebar) when accessed directly
   const isPokerPage = location.pathname === '/game/poker'
+  const isUnoPage = location.pathname === '/game/uno'
   
   if (isPokerPage) {
     return <Poker />
+  }
+  
+  if (isUnoPage) {
+    return <Uno />
   }
   
   return (
@@ -26,7 +31,7 @@ function AppContent() {
             <Route path="/main-menu" element={<MainMenu />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/game/poker" element={<Poker />} />
-            <Route path="/game/uno" element={<GamePlaceholder game="UNO" />} />
+            <Route path="/game/uno" element={<Uno />} />
           </Routes>
         </div>
       </main>
