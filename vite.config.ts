@@ -4,16 +4,23 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   base: '/',
   plugins: [react()],
+
   server: {
     proxy: {
       '/socket.io': {
         target: 'http://localhost:3001',
-        ws: true
-      }
-    }
+        ws: true,
+      },
+    },
   },
+
+  preview: {
+    host: true,
+    allowedHosts: ['.railway.app'],
+  },
+
   build: {
     outDir: 'dist',
-    assetsDir: 'assets'
-  }
+    assetsDir: 'assets',
+  },
 })
