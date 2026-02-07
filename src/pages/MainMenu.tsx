@@ -7,6 +7,7 @@ import { pokerSocket } from '../services/socket'
 
 const STORAGE_KEY = 'bulk_games_auth'
 const USER_ID_KEY = 'bulk_games_user_id'
+const UNO_LOBBY_PREFIX = 'uno_lobby_'
 
 function getOrCreateUserId(): string {
   let odotuid = localStorage.getItem(USER_ID_KEY)
@@ -35,6 +36,59 @@ function getUserProfile(): { nickname: string; avatarUrl: string | null } {
   return { nickname: 'Player', avatarUrl: null }
 }
 
+function generateLobbyCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let out = ''
+  for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)]
+  return out
+}
+
+function createUnoLobby(hostId: string, nickname: string, avatarUrl: string | null): string {
+  let code = generateLobbyCode()
+  let tries = 0
+  while (localStorage.getItem(`${UNO_LOBBY_PREFIX}${code}`) && tries < 20) {
+    code = generateLobbyCode()
+    tries++
+  }
+
+  const now = Date.now()
+  const lobbyState = {
+    lobbyCode: code,
+    hostId,
+    phase: 'lobby',
+    createdAt: now,
+    updatedAt: now,
+    version: 1,
+    direction: 1,
+    currentPlayerIndex: 0,
+    currentColor: null,
+    drawPile: [] as unknown[],
+    discardPile: [] as unknown[],
+    winnerId: null as string | null,
+    players: [
+      {
+        playerId: hostId,
+        seatIndex: 0,
+        nickname,
+        avatarUrl,
+        isConnected: true,
+        lastSeenAt: now,
+      }
+    ],
+    hands: {
+      [hostId]: [] as unknown[]
+    },
+    actionLog: [
+      { id: `log_${now}`, ts: now, text: `${nickname} created the lobby` }
+    ],
+    drawnPlayable: null as null | { playerId: string; cardId: string },
+  }
+
+  localStorage.setItem(`${UNO_LOBBY_PREFIX}${code}`, JSON.stringify(lobbyState))
+  localStorage.setItem(`uno_intents_${code}`, JSON.stringify([]))
+  return code
+}
+
 function MainMenu() {
   const { role, toggleRole } = useRole()
   const { isLoggedIn } = useAuth()
@@ -55,30 +109,28 @@ function MainMenu() {
   }
 
   const handleCreateClick = async (game: 'poker' | 'uno') => {
-    if (game !== 'poker') {
-      setCurrentGame(game)
-      setCreatedCode('COMING')
-      setCreateModalOpen(true)
-      return
-    }
-    
     setCurrentGame(game)
     setError(null)
     setLoading(true)
     
     try {
-      await pokerSocket.connect()
-      
       const odotuid = getOrCreateUserId()
       const profile = getUserProfile()
-      
-      const result = await pokerSocket.createLobby(odotuid, profile.nickname, profile.avatarUrl)
-      
-      if (result.success && result.code) {
-        setCreatedCode(result.code)
-        setCreateModalOpen(true)
+
+      if (game === 'poker') {
+        await pokerSocket.connect()
+        const result = await pokerSocket.createLobby(odotuid, profile.nickname, profile.avatarUrl)
+        
+        if (result.success && result.code) {
+          setCreatedCode(result.code)
+          setCreateModalOpen(true)
+        } else {
+          setError(result.error || 'Failed to create lobby')
+        }
       } else {
-        setError(result.error || 'Failed to create lobby')
+        const code = createUnoLobby(odotuid, profile.nickname, profile.avatarUrl)
+        setCreatedCode(code)
+        setCreateModalOpen(true)
       }
     } catch (err) {
       setError('Failed to connect to server')
@@ -91,33 +143,39 @@ function MainMenu() {
   const handleJoinSubmit = async () => {
     if (joinCode.trim().length === 0) return
     
-    if (currentGame !== 'poker') {
-      setError('UNO is not yet available')
-      return
-    }
-    
     setLoading(true)
     setError(null)
     
     try {
-      await pokerSocket.connect()
-      
       const odotuid = getOrCreateUserId()
       const profile = getUserProfile()
-      
-      const result = await pokerSocket.joinLobby(
-        joinCode.toUpperCase(),
-        odotuid,
-        profile.nickname,
-        profile.avatarUrl
-      )
-      
-      if (result.success) {
-        setJoinModalOpen(false)
-        // Open in new tab
-        window.open(`/game/poker?lobby=${joinCode.toUpperCase()}`, '_blank')
+
+      if (currentGame === 'poker') {
+        await pokerSocket.connect()
+        
+        const result = await pokerSocket.joinLobby(
+          joinCode.toUpperCase(),
+          odotuid,
+          profile.nickname,
+          profile.avatarUrl
+        )
+        
+        if (result.success) {
+          setJoinModalOpen(false)
+          // Open in new tab
+          window.open(`/game/poker?lobby=${joinCode.toUpperCase()}`, '_blank')
+        } else {
+          setError(result.error || 'Failed to join lobby')
+        }
       } else {
-        setError(result.error || 'Failed to join lobby')
+        const code = joinCode.toUpperCase()
+        const exists = !!localStorage.getItem(`${UNO_LOBBY_PREFIX}${code}`)
+        if (!exists) {
+          setError('Lobby not found')
+        } else {
+          setJoinModalOpen(false)
+          window.open(`/game/uno?lobby=${code}`, '_blank')
+        }
       }
     } catch (err) {
       setError('Failed to connect to server')
@@ -129,10 +187,9 @@ function MainMenu() {
 
   const handleCreateConfirm = () => {
     setCreateModalOpen(false)
-    if (currentGame === 'poker' && createdCode && createdCode !== 'COMING') {
-      // Open in new tab
-      window.open(`/game/poker?lobby=${createdCode}`, '_blank')
-    }
+    if (!createdCode) return
+    // Open in new tab
+    window.open(`/game/${currentGame}?lobby=${createdCode}`, '_blank')
   }
 
   return (
@@ -230,7 +287,7 @@ function MainMenu() {
             borderRadius: 'var(--radius-md)',
             border: '1px solid var(--color-border)',
           }}>
-            {createdCode === 'COMING' ? 'Coming Soon' : createdCode}
+            {createdCode}
           </div>
         </div>
         {error && <p className="field-error" style={{ textAlign: 'center' }}>{error}</p>}
@@ -238,7 +295,7 @@ function MainMenu() {
           <button 
             className="btn-primary" 
             onClick={handleCreateConfirm}
-            disabled={createdCode === 'COMING'}
+            disabled={!createdCode}
           >
             Enter Lobby
           </button>
