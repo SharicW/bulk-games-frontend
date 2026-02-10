@@ -87,14 +87,15 @@ export async function apiLogout(): Promise<void> {
 }
 
 export async function apiGetMe(): Promise<ApiUser> {
-  return request('/me');
+  return request('/auth/me');
 }
 
 export async function apiUpdateMe(
   body: { nickname?: string; avatarUrl?: string | null; oldPassword?: string; newPassword?: string },
 ): Promise<{ success: boolean; user?: ApiUser; error?: string }> {
-  return request('/me', {
+  return request('/auth/me', {
     method: 'PATCH',
     body: JSON.stringify(body),
   });
 }
+
