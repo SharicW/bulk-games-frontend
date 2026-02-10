@@ -1,4 +1,4 @@
-import { io, Socket } from 'socket.io-client';
+import { io, type Socket } from 'socket.io-client';
 import { getToken } from './api';
 
 import type {
@@ -19,289 +19,251 @@ const ENV = (import.meta as any).env as { VITE_BACKEND_URL?: string; PROD?: bool
 
 const BASE_URL =
   ENV.VITE_BACKEND_URL ||
-  (ENV.PROD
-    ? 'https://bulk-games-backend-production.up.railway.app'
-    : 'http://localhost:3001');
+  (ENV.PROD ? 'https://bulk-games-backend-production.up.railway.app' : 'http://localhost:3001');
 
-/**
- * ВАЖНО:
- * - Poker должен ходить в namespace "/poker"
- * - Uno должен ходить в namespace "/uno"
- * - Токен надо подставлять каждый раз перед connect/reconnect
- */
+/** helper: аккуратно склеить base + namespace */
+function nsUrl(namespace: '/poker' | '/uno') {
+  return `${BASE_URL.replace(/\/$/, '')}${namespace}`;
+}
 
 type Listener = (data: unknown) => void;
 
-class BaseNS {
+class BaseNsSocket {
   protected socket: Socket | null = null;
   protected listeners: Map<string, Set<Listener>> = new Map();
-  protected namespacePath: string;
-  protected label: string;
 
-  constructor(namespacePath: string, label: string) {
-    this.namespacePath = namespacePath;
-    this.label = label;
-  }
+  constructor(
+    protected namespace: '/poker' | '/uno',
+    protected label: '[socket/poker]' | '[socket/uno]',
+  ) {}
 
-  protected emitLocal(event: string, data: unknown): void {
+  /** внутренняя рассылка событий в подписчиков */
+  protected emitLocal(event: string, data: unknown) {
     const set = this.listeners.get(event);
     if (!set) return;
-    for (const fn of set) fn(data);
+    for (const cb of set) cb(data);
   }
 
-  on(event: string, callback: Listener): () => void {
+  on(event: string, cb: Listener) {
     if (!this.listeners.has(event)) this.listeners.set(event, new Set());
-    this.listeners.get(event)!.add(callback);
-    return () => this.listeners.get(event)?.delete(callback);
+    this.listeners.get(event)!.add(cb);
+    return () => this.listeners.get(event)?.delete(cb);
   }
 
-  off(event: string, callback: Listener): void {
-    this.listeners.get(event)?.delete(callback);
+  off(event: string, cb: Listener) {
+    this.listeners.get(event)?.delete(cb);
   }
 
-  /**
-   * Принудительно обновить auth на сокете (полезно после login/register).
-   */
-  refreshAuth(): void {
+  isConnected() {
+    return !!this.socket?.connected;
+  }
+
+  disconnect() {
     if (!this.socket) return;
-    this.socket.auth = { token: getToken() };
-  }
-
-  /**
-   * Полный reconnect с новым токеном.
-   * Вызывай после успешного login/register, если до этого сокет уже был подключен.
-   */
-  reconnectWithFreshToken(): Promise<void> {
-    this.disconnect();
-    return this.connect();
-  }
-
-  connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // уже подключен
-      if (this.socket?.connected) {
-        resolve();
-        return;
-      }
-
-      const token = getToken();
-
-      this.socket = io(`${BASE_URL}${this.namespacePath}`, {
-        transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionAttempts: 10,
-        reconnectionDelay: 800,
-        auth: { token }, // <-- берём токен ПРЯМО СЕЙЧАС
-      });
-
-      this.socket.on('connect', () => {
-        console.log(`[socket${this.namespacePath}] connected:`, this.socket?.id);
-        this.emitLocal('connect', this.socket?.id ?? null);
-        resolve();
-      });
-
-      this.socket.on('connect_error', (err: any) => {
-        console.error(`[socket${this.namespacePath}] connect_error:`, err?.message ?? err, err);
-        reject(err);
-      });
-
-      this.socket.on('disconnect', (reason) => {
-        console.log(`[socket${this.namespacePath}] disconnected:`, reason);
-        this.emitLocal('disconnect', reason);
-      });
-
-      // если сервер шлёт "test" — логируем, удобно для дебага
-      this.socket.on('test', (data: any) => {
-        console.log(`[socket${this.namespacePath}] test:`, data);
-      });
-    });
-  }
-
-  disconnect(): void {
-    if (!this.socket) return;
-    this.socket.removeAllListeners();
     this.socket.disconnect();
     this.socket = null;
   }
 
-  protected ackOrTimeout<T>(emitFn: (cb: (res: T) => void) => void, ms = 8000): Promise<T> {
+  /** emit с ack и таймаутом — чтобы не зависало "втихую" */
+  protected emitWithAck<TResp = any, TPayload = any>(
+    event: string,
+    payload: TPayload,
+    timeoutMs = 8000,
+  ): Promise<TResp> {
     return new Promise((resolve) => {
+      const s = this.socket;
+      if (!s) {
+        resolve({ success: false, error: 'Not connected' } as any);
+        return;
+      }
+
       let done = false;
       const t = setTimeout(() => {
         if (done) return;
         done = true;
-        resolve(({
-          success: false,
-          error: 'Timeout (no ack from server)',
-        } as unknown) as T);
-      }, ms);
+        resolve({ success: false, error: `Timeout: ${event}` } as any);
+      }, timeoutMs);
 
-      emitFn((res: T) => {
+      s.emit(event, payload as any, (resp: TResp) => {
         if (done) return;
         done = true;
         clearTimeout(t);
-        resolve(res);
+        resolve(resp);
       });
     });
   }
 
-  protected ensureSocket(): Socket | null {
-    if (!this.socket) return null;
-    // если токен поменялся (после логина), можно обновлять перед каждым запросом
-    this.socket.auth = { token: getToken() };
-    return this.socket;
+  connect(): Promise<string> {
+    return new Promise((resolve, reject) => {
+      // уже подключены
+      if (this.socket?.connected) {
+        resolve(this.socket.id);
+        return;
+      }
+
+      const token = getToken(); // важно: берём актуальный токен в момент коннекта
+
+      const s = io(nsUrl(this.namespace), {
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 800,
+        auth: { token },
+        withCredentials: true,
+      });
+
+      this.socket = s;
+
+      // на каждый реконнект — обновляем токен (если он поменялся после логина)
+      s.io.on('reconnect_attempt', () => {
+        s.auth = { token: getToken() };
+      });
+
+      s.on('connect', () => {
+        console.log(this.label, 'connected:', s.id);
+        // вот это чинит твой "connected: undefined"
+        this.emitLocal('connect', s.id);
+        resolve(s.id);
+      });
+
+      s.on('connect_error', (err: any) => {
+        console.error(this.label, 'connect_error:', err?.message || err);
+        this.emitLocal('connect_error', err);
+        reject(err);
+      });
+
+      s.on('disconnect', (reason) => {
+        console.log(this.label, 'disconnected:', reason);
+        this.emitLocal('disconnect', reason);
+      });
+
+      // общий "пинг" от бэка (у тебя он называется test)
+      s.on('test', (data) => {
+        console.log(this.label, 'test:', data);
+        this.emitLocal('test', data);
+      });
+    });
   }
 }
 
-/* ===================== POKER ===================== */
+/* ========================= POKER ========================= */
 
-class PokerSocket extends BaseNS {
+class PokerSocket extends BaseNsSocket {
   constructor() {
-    super('/poker', 'poker');
+    super('/poker', '[socket/poker]');
   }
 
-  // слушаем gameState из poker namespace
-  override connect(): Promise<void> {
-    return super.connect().then(() => {
-      const s = this.socket!;
-      s.on('gameState', (data: ClientGameState) => this.emitLocal('gameState', data));
-      s.on('lobbyEnded', () => this.emitLocal('lobbyEnded', null));
+  // Состояние игры (если бэк шлёт gameState)
+  bindGameState() {
+    this.socket?.on('gameState', (data: ClientGameState) => {
+      this.emitLocal('gameState', data);
     });
+    this.socket?.on('lobbyEnded', () => this.emitLocal('lobbyEnded', null));
+  }
+
+  override async connect(): Promise<string> {
+    const id = await super.connect();
+    this.bindGameState();
+    return id;
   }
 
   createLobby(): Promise<CreateLobbyResponse> {
-    const s = this.ensureSocket();
-    if (!s) return Promise.resolve({ success: false, error: 'Not connected' });
-
-    return this.ackOrTimeout<CreateLobbyResponse>((cb) => {
-      s.emit('createLobby', {}, cb);
-    });
+    // на всякий: передаём gameType, чтобы бэк точно понял
+    return this.emitWithAck<CreateLobbyResponse>('createLobby', { gameType: 'poker' });
   }
 
   joinLobby(code: string): Promise<JoinLobbyResponse> {
-    const s = this.ensureSocket();
-    if (!s) return Promise.resolve({ success: false, error: 'Not connected' });
-
-    return this.ackOrTimeout<JoinLobbyResponse>((cb) => {
-      s.emit('joinLobby', { code }, cb);
-    });
+    return this.emitWithAck<JoinLobbyResponse>('joinLobby', { gameType: 'poker', code });
   }
 
   startGame(lobbyCode: string): Promise<{ success: boolean; error?: string }> {
-    const s = this.ensureSocket();
-    if (!s) return Promise.resolve({ success: false, error: 'Not connected' });
+    return this.emitWithAck('startGame', { gameType: 'poker', lobbyCode });
+  }
 
-    return this.ackOrTimeout((cb) => {
-      s.emit('startGame', { lobbyCode }, cb);
+  sendAction(lobbyCode: string, action: PlayerAction, amount?: number) {
+    return this.emitWithAck<{ success: boolean; error?: string }>('playerAction', {
+      gameType: 'poker',
+      lobbyCode,
+      action,
+      amount,
     });
   }
 
-  sendAction(
-    lobbyCode: string,
-    action: PlayerAction,
-    amount?: number,
-  ): Promise<{ success: boolean; error?: string }> {
-    const s = this.ensureSocket();
-    if (!s) return Promise.resolve({ success: false, error: 'Not connected' });
-
-    return this.ackOrTimeout((cb) => {
-      s.emit('playerAction', { lobbyCode, action, amount }, cb);
+  requestState(lobbyCode: string) {
+    return this.emitWithAck<{ success: boolean; gameState?: ClientGameState }>('requestState', {
+      gameType: 'poker',
+      lobbyCode,
     });
   }
 
-  requestState(lobbyCode: string): Promise<{ success: boolean; gameState?: ClientGameState }> {
-    const s = this.ensureSocket();
-    if (!s) return Promise.resolve({ success: false });
-
-    return this.ackOrTimeout((cb) => {
-      s.emit('requestState', { lobbyCode }, cb);
-    });
-  }
-
-  endLobby(lobbyCode: string): Promise<{ success: boolean; error?: string }> {
-    const s = this.ensureSocket();
-    if (!s) return Promise.resolve({ success: false, error: 'Not connected' });
-
-    return this.ackOrTimeout((cb) => {
-      s.emit('endLobby', { lobbyCode }, cb);
+  endLobby(lobbyCode: string) {
+    return this.emitWithAck<{ success: boolean; error?: string }>('endLobby', {
+      gameType: 'poker',
+      lobbyCode,
     });
   }
 }
 
 export const pokerSocket = new PokerSocket();
 
-/* ===================== UNO ===================== */
+/* ========================= UNO ========================= */
 
-class UnoSocket extends BaseNS {
+class UnoSocket extends BaseNsSocket {
   constructor() {
-    super('/uno', 'uno');
+    super('/uno', '[socket/uno]');
   }
 
-  override connect(): Promise<void> {
-    return super.connect().then(() => {
-      const s = this.socket!;
-      // у тебя было и gameState и unoState — оставим оба
-      s.on('gameState', (data: UnoClientState) => this.emitLocal('gameState', data));
-      s.on('unoState', (data: UnoClientState) => this.emitLocal('gameState', data));
-      s.on('lobbyEnded', () => this.emitLocal('lobbyEnded', null));
+  bindGameState() {
+    this.socket?.on('gameState', (data: UnoClientState) => {
+      this.emitLocal('gameState', data);
     });
+    // если бэк иногда шлёт unoState
+    this.socket?.on('unoState', (data: UnoClientState) => {
+      this.emitLocal('gameState', data);
+    });
+    this.socket?.on('lobbyEnded', () => this.emitLocal('lobbyEnded', null));
+  }
+
+  override async connect(): Promise<string> {
+    const id = await super.connect();
+    this.bindGameState();
+    return id;
   }
 
   createLobby(): Promise<UnoCreateLobbyResponse> {
-    const s = this.ensureSocket();
-    if (!s) return Promise.resolve({ success: false, error: 'Not connected' });
-
-    return this.ackOrTimeout<UnoCreateLobbyResponse>((cb) => {
-      // gameType можно не слать, т.к. мы уже в /uno, но пусть будет — не ломает
-      s.emit('createLobby', { gameType: 'uno' }, cb);
-    });
+    return this.emitWithAck<UnoCreateLobbyResponse>('createLobby', { gameType: 'uno' });
   }
 
   joinLobby(code: string): Promise<UnoJoinLobbyResponse> {
-    const s = this.ensureSocket();
-    if (!s) return Promise.resolve({ success: false, error: 'Not connected' });
+    return this.emitWithAck<UnoJoinLobbyResponse>('joinLobby', { gameType: 'uno', code });
+  }
 
-    return this.ackOrTimeout<UnoJoinLobbyResponse>((cb) => {
-      s.emit('joinLobby', { gameType: 'uno', code }, cb);
+  startGame(lobbyCode: string) {
+    return this.emitWithAck<{ success: boolean; error?: string }>('startGame', {
+      gameType: 'uno',
+      lobbyCode,
     });
   }
 
-  startGame(lobbyCode: string): Promise<{ success: boolean; error?: string }> {
-    const s = this.ensureSocket();
-    if (!s) return Promise.resolve({ success: false, error: 'Not connected' });
-
-    return this.ackOrTimeout((cb) => {
-      s.emit('startGame', { gameType: 'uno', lobbyCode }, cb);
+  sendAction(lobbyCode: string, action: UnoPlayerAction) {
+    return this.emitWithAck<{ success: boolean; error?: string }>('playerAction', {
+      gameType: 'uno',
+      lobbyCode,
+      action,
     });
   }
 
-  sendAction(
-    lobbyCode: string,
-    action: UnoPlayerAction,
-  ): Promise<{ success: boolean; error?: string }> {
-    const s = this.ensureSocket();
-    if (!s) return Promise.resolve({ success: false, error: 'Not connected' });
-
-    return this.ackOrTimeout((cb) => {
-      s.emit('playerAction', { gameType: 'uno', lobbyCode, action }, cb);
+  requestState(lobbyCode: string) {
+    return this.emitWithAck<{ success: boolean; gameState?: UnoClientState }>('requestState', {
+      gameType: 'uno',
+      lobbyCode,
     });
   }
 
-  requestState(lobbyCode: string): Promise<{ success: boolean; gameState?: UnoClientState }> {
-    const s = this.ensureSocket();
-    if (!s) return Promise.resolve({ success: false });
-
-    return this.ackOrTimeout((cb) => {
-      s.emit('requestState', { gameType: 'uno', lobbyCode }, cb);
-    });
-  }
-
-  endLobby(lobbyCode: string): Promise<{ success: boolean; error?: string }> {
-    const s = this.ensureSocket();
-    if (!s) return Promise.resolve({ success: false, error: 'Not connected' });
-
-    return this.ackOrTimeout((cb) => {
-      s.emit('endLobby', { gameType: 'uno', lobbyCode }, cb);
+  endLobby(lobbyCode: string) {
+    return this.emitWithAck<{ success: boolean; error?: string }>('endLobby', {
+      gameType: 'uno',
+      lobbyCode,
     });
   }
 }
