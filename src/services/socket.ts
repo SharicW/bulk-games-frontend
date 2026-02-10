@@ -1,6 +1,13 @@
 import { io, Socket } from 'socket.io-client';
 import { getToken } from './api';
-import type { ClientGameState, PlayerAction, CreateLobbyResponse, JoinLobbyResponse } from '../types/poker';
+
+import type {
+  ClientGameState,
+  PlayerAction,
+  CreateLobbyResponse,
+  JoinLobbyResponse,
+} from '../types/poker';
+
 import type {
   UnoClientState,
   UnoPlayerAction,
@@ -9,13 +16,45 @@ import type {
 } from '../types/uno';
 
 const ENV = (import.meta as any).env as { VITE_BACKEND_URL?: string; PROD?: boolean };
-const SOCKET_URL = ENV.VITE_BACKEND_URL || (ENV.PROD
-  ? 'https://bulk-games-backend-production.up.railway.app'
-  : 'http://localhost:3001');
 
-class PokerSocket {
-  private socket: Socket | null = null;
-  private listeners: Map<string, Set<(data: unknown) => void>> = new Map();
+const BASE_URL =
+  ENV.VITE_BACKEND_URL ||
+  (ENV.PROD
+    ? 'https://bulk-games-backend-production.up.railway.app'
+    : 'http://localhost:3001');
+
+/** На сколько ждать ack от сервера (мс) */
+const ACK_TIMEOUT_MS = 8000;
+
+type Listener = (data: unknown) => void;
+
+function normBaseUrl(url: string) {
+  return url.replace(/\/+$/, '');
+}
+
+function nsUrl(namespace: '/poker' | '/uno') {
+  return `${normBaseUrl(BASE_URL)}${namespace}`;
+}
+
+function getAuthOrNull() {
+  const token = getToken();
+  return token ? { token } : null;
+}
+
+/**
+ * Универсальная базовая обёртка для socket.io
+ * - подключение к НУЖНОМУ namespace
+ * - auth берём из localStorage на момент коннекта
+ * - ack с timeout, чтобы промисы не зависали вечно
+ */
+class BaseGameSocket<TState> {
+  protected socket: Socket | null = null;
+  protected listeners: Map<string, Set<Listener>> = new Map();
+  private namespace: '/poker' | '/uno';
+
+  constructor(namespace: '/poker' | '/uno') {
+    this.namespace = namespace;
+  }
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -24,36 +63,43 @@ class PokerSocket {
         return;
       }
 
-      this.socket = io(SOCKET_URL, {
+      const auth = getAuthOrNull();
+      if (!auth) {
+        reject(new Error('No token (not logged in)'));
+        return;
+      }
+
+      this.socket = io(nsUrl(this.namespace), {
         transports: ['websocket', 'polling'],
         reconnection: true,
-        reconnectionAttempts: 5,
+        reconnectionAttempts: 10,
         reconnectionDelay: 1000,
-        auth: { token: getToken() },
+        auth, // важно: auth идёт в handshake
       });
 
       this.socket.on('connect', () => {
-        console.log('Socket connected');
-        this.emit('connect', null);
+        console.log(`[socket${this.namespace}] connected:`, this.socket?.id);
+        this.emitLocal('connect', null);
         resolve();
       });
 
-      this.socket.on('connect_error', (error: unknown) => {
-        console.error('Socket connection error:', error);
-        reject(error);
+      this.socket.on('connect_error', (err: unknown) => {
+        console.error(`[socket${this.namespace}] connect_error:`, err);
+        reject(err);
       });
 
-      this.socket.on('disconnect', () => {
-        console.log('Socket disconnected');
-        this.emit('disconnect', null);
+      this.socket.on('disconnect', (reason: string) => {
+        console.log(`[socket${this.namespace}] disconnected:`, reason);
+        this.emitLocal('disconnect', null);
       });
 
-      this.socket.on('gameState', (data: ClientGameState) => {
-        this.emit('gameState', data);
+      // общие события (если на беке так называется)
+      this.socket.on('gameState', (data: TState) => {
+        this.emitLocal('gameState', data);
       });
 
       this.socket.on('lobbyEnded', () => {
-        this.emit('lobbyEnded', null);
+        this.emitLocal('lobbyEnded', null);
       });
     });
   }
@@ -65,56 +111,67 @@ class PokerSocket {
     }
   }
 
-  private emit(event: string, data: unknown): void {
-    const eventListeners = this.listeners.get(event);
-    if (eventListeners) {
-      eventListeners.forEach(listener => listener(data));
-    }
+  on(event: string, cb: Listener): () => void {
+    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+    this.listeners.get(event)!.add(cb);
+    return () => this.listeners.get(event)?.delete(cb);
   }
 
-  on(event: string, callback: (data: unknown) => void): () => void {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, new Set());
-    }
-    this.listeners.get(event)!.add(callback);
-
-    return () => {
-      this.listeners.get(event)?.delete(callback);
-    };
+  off(event: string, cb: Listener): void {
+    this.listeners.get(event)?.delete(cb);
   }
 
-  off(event: string, callback: (data: unknown) => void): void {
-    this.listeners.get(event)?.delete(callback);
+  protected emitLocal(event: string, data: unknown): void {
+    const set = this.listeners.get(event);
+    if (!set) return;
+    set.forEach((fn) => fn(data));
+  }
+
+  /**
+   * emit с ack + timeout, чтобы не зависать, если сервер не слушает событие
+   */
+  protected emitWithAck<TRes = any>(event: string, payload: any): Promise<TRes> {
+    return new Promise((resolve) => {
+      if (!this.socket) {
+        resolve({ success: false, error: 'Not connected' } as any);
+        return;
+      }
+
+      // На всякий случай: если токен поменялся — обновим auth перед возможным реконнектом
+      const auth = getAuthOrNull();
+      if (auth) this.socket.auth = auth;
+
+      // socket.io v4: timeout() делает ack с ошибкой при таймауте
+      (this.socket as any)
+        .timeout(ACK_TIMEOUT_MS)
+        .emit(event, payload, (err: any, response: TRes) => {
+          if (err) {
+            resolve({ success: false, error: 'Ack timeout' } as any);
+            return;
+          }
+          resolve(response);
+        });
+    });
+  }
+}
+
+/* ───────────────────────── Poker ───────────────────────── */
+
+class PokerSocket extends BaseGameSocket<ClientGameState> {
+  constructor() {
+    super('/poker');
   }
 
   createLobby(): Promise<CreateLobbyResponse> {
-    return new Promise((resolve) => {
-      if (!this.socket) {
-        resolve({ success: false, error: 'Not connected' });
-        return;
-      }
-      this.socket.emit('createLobby', {}, resolve);
-    });
+    return this.emitWithAck<CreateLobbyResponse>('createLobby', {});
   }
 
   joinLobby(code: string): Promise<JoinLobbyResponse> {
-    return new Promise((resolve) => {
-      if (!this.socket) {
-        resolve({ success: false, error: 'Not connected' });
-        return;
-      }
-      this.socket.emit('joinLobby', { code }, resolve);
-    });
+    return this.emitWithAck<JoinLobbyResponse>('joinLobby', { code });
   }
 
   startGame(lobbyCode: string): Promise<{ success: boolean; error?: string }> {
-    return new Promise((resolve) => {
-      if (!this.socket) {
-        resolve({ success: false, error: 'Not connected' });
-        return;
-      }
-      this.socket.emit('startGame', { lobbyCode }, resolve);
-    });
+    return this.emitWithAck('startGame', { lobbyCode });
   }
 
   sendAction(
@@ -122,173 +179,68 @@ class PokerSocket {
     action: PlayerAction,
     amount?: number,
   ): Promise<{ success: boolean; error?: string }> {
-    return new Promise((resolve) => {
-      if (!this.socket) {
-        resolve({ success: false, error: 'Not connected' });
-        return;
-      }
-      this.socket.emit('playerAction', { lobbyCode, action, amount }, resolve);
-    });
+    return this.emitWithAck('playerAction', { lobbyCode, action, amount });
   }
 
-  requestState(lobbyCode: string): Promise<{ success: boolean; gameState?: ClientGameState }> {
-    return new Promise((resolve) => {
-      if (!this.socket) {
-        resolve({ success: false });
-        return;
-      }
-      this.socket.emit('requestState', { lobbyCode }, resolve);
-    });
+  requestState(
+    lobbyCode: string,
+  ): Promise<{ success: boolean; gameState?: ClientGameState }> {
+    return this.emitWithAck('requestState', { lobbyCode });
   }
 
   endLobby(lobbyCode: string): Promise<{ success: boolean; error?: string }> {
-    return new Promise((resolve) => {
-      if (!this.socket) {
-        resolve({ success: false, error: 'Not connected' });
-        return;
-      }
-      this.socket.emit('endLobby', { lobbyCode }, resolve);
-    });
+    return this.emitWithAck('endLobby', { lobbyCode });
   }
 }
 
 export const pokerSocket = new PokerSocket();
 
-class UnoSocket {
-  private socket: Socket | null = null;
-  private listeners: Map<string, Set<(data: unknown) => void>> = new Map();
+/* ───────────────────────── UNO ───────────────────────── */
 
-  connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (this.socket?.connected) {
-        resolve();
-        return;
-      }
+class UnoSocket extends BaseGameSocket<UnoClientState> {
+  constructor() {
+    super('/uno');
+  }
 
-      this.socket = io(SOCKET_URL, {
-        transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
-        auth: { token: getToken() },
-      });
-
-      this.socket.on('connect', () => {
-        console.log('UNO socket connected');
-        this.emit('connect', null);
-        resolve();
-      });
-
-      this.socket.on('connect_error', (error: unknown) => {
-        console.error('UNO socket connection error:', error);
-        reject(error);
-      });
-
-      this.socket.on('disconnect', () => {
-        console.log('UNO socket disconnected');
-        this.emit('disconnect', null);
-      });
-
-      this.socket.on('gameState', (data: UnoClientState) => {
-        this.emit('gameState', data);
-      });
+  // если на беке gameState/unoState оба возможны — слушаем оба
+  override connect(): Promise<void> {
+    return super.connect().then(() => {
+      if (!this.socket) return;
 
       this.socket.on('unoState', (data: UnoClientState) => {
-        this.emit('gameState', data);
-      });
-
-      this.socket.on('lobbyEnded', () => {
-        this.emit('lobbyEnded', null);
+        this.emitLocal('gameState', data);
       });
     });
-  }
-
-  disconnect(): void {
-    if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
-    }
-  }
-
-  private emit(event: string, data: unknown): void {
-    const eventListeners = this.listeners.get(event);
-    if (eventListeners) {
-      eventListeners.forEach(listener => listener(data));
-    }
-  }
-
-  on(event: string, callback: (data: unknown) => void): () => void {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, new Set());
-    }
-    this.listeners.get(event)!.add(callback);
-
-    return () => {
-      this.listeners.get(event)?.delete(callback);
-    };
   }
 
   createLobby(): Promise<UnoCreateLobbyResponse> {
-    return new Promise((resolve) => {
-      if (!this.socket) {
-        resolve({ success: false, error: 'Not connected' });
-        return;
-      }
-      this.socket.emit('createLobby', { gameType: 'uno' }, resolve);
-    });
+    // оставил gameType для совместимости с твоей текущей логикой
+    return this.emitWithAck<UnoCreateLobbyResponse>('createLobby', { gameType: 'uno' });
   }
 
   joinLobby(code: string): Promise<UnoJoinLobbyResponse> {
-    return new Promise((resolve) => {
-      if (!this.socket) {
-        resolve({ success: false, error: 'Not connected' });
-        return;
-      }
-      this.socket.emit('joinLobby', { gameType: 'uno', code }, resolve);
-    });
+    return this.emitWithAck<UnoJoinLobbyResponse>('joinLobby', { gameType: 'uno', code });
   }
 
   startGame(lobbyCode: string): Promise<{ success: boolean; error?: string }> {
-    return new Promise((resolve) => {
-      if (!this.socket) {
-        resolve({ success: false, error: 'Not connected' });
-        return;
-      }
-      this.socket.emit('startGame', { gameType: 'uno', lobbyCode }, resolve);
-    });
+    return this.emitWithAck('startGame', { gameType: 'uno', lobbyCode });
   }
 
   sendAction(
     lobbyCode: string,
     action: UnoPlayerAction,
   ): Promise<{ success: boolean; error?: string }> {
-    return new Promise((resolve) => {
-      if (!this.socket) {
-        resolve({ success: false, error: 'Not connected' });
-        return;
-      }
-      this.socket.emit('playerAction', { gameType: 'uno', lobbyCode, action }, resolve);
-    });
+    return this.emitWithAck('playerAction', { gameType: 'uno', lobbyCode, action });
   }
 
-  requestState(lobbyCode: string): Promise<{ success: boolean; gameState?: UnoClientState }> {
-    return new Promise((resolve) => {
-      if (!this.socket) {
-        resolve({ success: false });
-        return;
-      }
-      this.socket.emit('requestState', { gameType: 'uno', lobbyCode }, resolve);
-    });
+  requestState(
+    lobbyCode: string,
+  ): Promise<{ success: boolean; gameState?: UnoClientState }> {
+    return this.emitWithAck('requestState', { gameType: 'uno', lobbyCode });
   }
 
   endLobby(lobbyCode: string): Promise<{ success: boolean; error?: string }> {
-    return new Promise((resolve) => {
-      if (!this.socket) {
-        resolve({ success: false, error: 'Not connected' });
-        return;
-      }
-      this.socket.emit('endLobby', { gameType: 'uno', lobbyCode }, resolve);
-    });
+    return this.emitWithAck('endLobby', { gameType: 'uno', lobbyCode });
   }
 }
 
