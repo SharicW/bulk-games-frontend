@@ -1,4 +1,4 @@
-import { io, type Socket } from 'socket.io-client';
+import { io, Socket } from 'socket.io-client';
 import { getToken } from './api';
 
 import type {
@@ -15,257 +15,225 @@ import type {
   UnoJoinLobbyResponse,
 } from '../types/uno';
 
-const ENV = (import.meta as any).env as { VITE_BACKEND_URL?: string; PROD?: boolean };
+const ENV = (import.meta as any).env as {
+  VITE_BACKEND_URL?: string;
+  PROD?: boolean;
+  DEV?: boolean;
+};
 
-const BASE_URL =
-  ENV.VITE_BACKEND_URL ||
-  (ENV.PROD ? 'https://bulk-games-backend-production.up.railway.app' : 'http://localhost:3001');
+// базовый URL без слэша на конце
+const BASE_URL = (ENV.VITE_BACKEND_URL ||
+  (ENV.PROD
+    ? 'https://bulk-games-backend-production.up.railway.app'
+    : 'http://localhost:3001'
+  )).replace(/\/$/, '');
 
-/** helper: аккуратно склеить base + namespace */
-function nsUrl(namespace: '/poker' | '/uno') {
-  return `${BASE_URL.replace(/\/$/, '')}${namespace}`;
-}
+type AnyFn = (...args: any[]) => void;
 
-type Listener = (data: unknown) => void;
-
-class BaseNsSocket {
+class BaseGameSocket<TState> {
   protected socket: Socket | null = null;
-  protected listeners: Map<string, Set<Listener>> = new Map();
+  private listeners: Map<string, Set<(data: any) => void>> = new Map();
 
-  constructor(
-    protected namespace: '/poker' | '/uno',
-    protected label: '[socket/poker]' | '[socket/uno]',
-  ) {}
+  constructor(private namespace: string, private label: string) {}
 
-  /** внутренняя рассылка событий в подписчиков */
-  protected emitLocal(event: string, data: unknown) {
-    const set = this.listeners.get(event);
-    if (!set) return;
-    for (const cb of set) cb(data);
+  private makeUrl(): string {
+    // namespace должен быть вида "/poker" или "/uno"
+    return `${BASE_URL}${this.namespace}`;
   }
 
-  on(event: string, cb: Listener) {
-    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
-    this.listeners.get(event)!.add(cb);
-    return () => this.listeners.get(event)?.delete(cb);
+  private applyFreshAuth(): void {
+    if (!this.socket) return;
+    // ВАЖНО: token читаем каждый раз из localStorage
+    this.socket.auth = { token: getToken() };
   }
 
-  off(event: string, cb: Listener) {
-    this.listeners.get(event)?.delete(cb);
+  connect(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (this.socket?.connected) {
+        resolve();
+        return;
+      }
+
+      this.socket = io(this.makeUrl(), {
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+        // auth берётся на момент connect
+        auth: { token: getToken() },
+        withCredentials: true,
+      });
+
+      this.socket.on('connect', () => {
+        console.log(`[socket/${this.label}] connected:`, this.socket?.id);
+        this.emitLocal('connect', this.socket?.id);
+        resolve();
+      });
+
+      this.socket.on('connect_error', (err: unknown) => {
+        console.error(`[socket/${this.label}] connect_error:`, err);
+        reject(err);
+      });
+
+      this.socket.on('disconnect', (reason: string) => {
+        console.log(`[socket/${this.label}] disconnected:`, reason);
+        this.emitLocal('disconnect', reason);
+      });
+
+      // полезно видеть, что бэк реально отдал пользователя
+      this.socket.on('test', (data: any) => {
+        console.log(`[socket/${this.label}] test:`, data);
+        this.emitLocal('test', data);
+      });
+
+      this.socket.on('gameState', (data: TState) => {
+        this.emitLocal('gameState', data);
+      });
+
+      this.socket.on('lobbyEnded', () => {
+        this.emitLocal('lobbyEnded', null);
+      });
+
+      // для UNO иногда отдельное событие
+      this.socket.on('unoState', (data: any) => {
+        this.emitLocal('gameState', data);
+      });
+    });
   }
 
-  isConnected() {
-    return !!this.socket?.connected;
-  }
-
-  disconnect() {
+  disconnect(): void {
     if (!this.socket) return;
     this.socket.disconnect();
     this.socket = null;
   }
 
-  /** emit с ack и таймаутом — чтобы не зависало "втихую" */
-  protected emitWithAck<TResp = any, TPayload = any>(
-    event: string,
-    payload: TPayload,
-    timeoutMs = 8000,
-  ): Promise<TResp> {
+  /**
+   * Если токен появился/поменялся после логина — вызывай это,
+   * чтобы сокет переподключился уже с новым токеном.
+   */
+  reconnect(): Promise<void> {
+    this.disconnect();
+    return this.connect();
+  }
+
+  on(event: string, cb: (data: any) => void): () => void {
+    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+    this.listeners.get(event)!.add(cb);
+    return () => this.listeners.get(event)?.delete(cb);
+  }
+
+  protected emitLocal(event: string, data: any): void {
+    const set = this.listeners.get(event);
+    if (!set) return;
+    for (const cb of set) cb(data);
+  }
+
+  /**
+   * emit с ack и таймаутом, чтобы не было ситуации "кнопка не работает" без ответа
+   */
+  protected emitAck<TRes = any>(event: string, payload: any, timeoutMs = 8000): Promise<TRes> {
     return new Promise((resolve) => {
-      const s = this.socket;
-      if (!s) {
+      if (!this.socket) {
         resolve({ success: false, error: 'Not connected' } as any);
         return;
       }
 
-      let done = false;
-      const t = setTimeout(() => {
-        if (done) return;
-        done = true;
-        resolve({ success: false, error: `Timeout: ${event}` } as any);
-      }, timeoutMs);
+      this.applyFreshAuth();
 
-      s.emit(event, payload as any, (resp: TResp) => {
-        if (done) return;
-        done = true;
-        clearTimeout(t);
-        resolve(resp);
-      });
-    });
-  }
-
-  connect(): Promise<string> {
-    return new Promise((resolve, reject) => {
-      // уже подключены
-      if (this.socket?.connected) {
-        resolve(this.socket.id);
-        return;
-      }
-
-      const token = getToken(); // важно: берём актуальный токен в момент коннекта
-
-      const s = io(nsUrl(this.namespace), {
-        transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionAttempts: 10,
-        reconnectionDelay: 800,
-        auth: { token },
-        withCredentials: true,
-      });
-
-      this.socket = s;
-
-      // на каждый реконнект — обновляем токен (если он поменялся после логина)
-      s.io.on('reconnect_attempt', () => {
-        s.auth = { token: getToken() };
-      });
-
-      s.on('connect', () => {
-        console.log(this.label, 'connected:', s.id);
-        // вот это чинит твой "connected: undefined"
-        this.emitLocal('connect', s.id);
-        resolve(s.id);
-      });
-
-      s.on('connect_error', (err: any) => {
-        console.error(this.label, 'connect_error:', err?.message || err);
-        this.emitLocal('connect_error', err);
-        reject(err);
-      });
-
-      s.on('disconnect', (reason) => {
-        console.log(this.label, 'disconnected:', reason);
-        this.emitLocal('disconnect', reason);
-      });
-
-      // общий "пинг" от бэка (у тебя он называется test)
-      s.on('test', (data) => {
-        console.log(this.label, 'test:', data);
-        this.emitLocal('test', data);
-      });
+      // socket.io-client: timeout().emit(event, payload, (err, res) => ...)
+      // если сервер не ответил ack'ом — будет err
+      (this.socket as any)
+        .timeout(timeoutMs)
+        .emit(event, payload, (err: any, res: TRes) => {
+          if (err) {
+            console.error(`[socket/${this.label}] ${event} timeout/error:`, err);
+            resolve({ success: false, error: 'No response from server' } as any);
+            return;
+          }
+          resolve(res);
+        });
     });
   }
 }
 
-/* ========================= POKER ========================= */
+/* ───────────────────── Poker ───────────────────── */
 
-class PokerSocket extends BaseNsSocket {
+class PokerSocket extends BaseGameSocket<ClientGameState> {
   constructor() {
-    super('/poker', '[socket/poker]');
-  }
-
-  // Состояние игры (если бэк шлёт gameState)
-  bindGameState() {
-    this.socket?.on('gameState', (data: ClientGameState) => {
-      this.emitLocal('gameState', data);
-    });
-    this.socket?.on('lobbyEnded', () => this.emitLocal('lobbyEnded', null));
-  }
-
-  override async connect(): Promise<string> {
-    const id = await super.connect();
-    this.bindGameState();
-    return id;
+    super('/poker', 'poker');
   }
 
   createLobby(): Promise<CreateLobbyResponse> {
-    // на всякий: передаём gameType, чтобы бэк точно понял
-    return this.emitWithAck<CreateLobbyResponse>('createLobby', { gameType: 'poker' });
+    // на всякий — явно gameType
+    return this.emitAck<CreateLobbyResponse>('createLobby', { gameType: 'poker' });
   }
 
   joinLobby(code: string): Promise<JoinLobbyResponse> {
-    return this.emitWithAck<JoinLobbyResponse>('joinLobby', { gameType: 'poker', code });
+    return this.emitAck<JoinLobbyResponse>('joinLobby', { gameType: 'poker', code });
   }
 
   startGame(lobbyCode: string): Promise<{ success: boolean; error?: string }> {
-    return this.emitWithAck('startGame', { gameType: 'poker', lobbyCode });
+    return this.emitAck('startGame', { gameType: 'poker', lobbyCode });
   }
 
-  sendAction(lobbyCode: string, action: PlayerAction, amount?: number) {
-    return this.emitWithAck<{ success: boolean; error?: string }>('playerAction', {
-      gameType: 'poker',
-      lobbyCode,
-      action,
-      amount,
-    });
+  sendAction(
+    lobbyCode: string,
+    action: PlayerAction,
+    amount?: number,
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.emitAck('playerAction', { gameType: 'poker', lobbyCode, action, amount });
   }
 
-  requestState(lobbyCode: string) {
-    return this.emitWithAck<{ success: boolean; gameState?: ClientGameState }>('requestState', {
-      gameType: 'poker',
-      lobbyCode,
-    });
+  requestState(lobbyCode: string): Promise<{ success: boolean; gameState?: ClientGameState }> {
+    return this.emitAck('requestState', { gameType: 'poker', lobbyCode });
   }
 
-  endLobby(lobbyCode: string) {
-    return this.emitWithAck<{ success: boolean; error?: string }>('endLobby', {
-      gameType: 'poker',
-      lobbyCode,
-    });
+  endLobby(lobbyCode: string): Promise<{ success: boolean; error?: string }> {
+    return this.emitAck('endLobby', { gameType: 'poker', lobbyCode });
   }
 }
 
 export const pokerSocket = new PokerSocket();
 
-/* ========================= UNO ========================= */
+/* ───────────────────── UNO ───────────────────── */
 
-class UnoSocket extends BaseNsSocket {
+class UnoSocket extends BaseGameSocket<UnoClientState> {
   constructor() {
-    super('/uno', '[socket/uno]');
-  }
-
-  bindGameState() {
-    this.socket?.on('gameState', (data: UnoClientState) => {
-      this.emitLocal('gameState', data);
-    });
-    // если бэк иногда шлёт unoState
-    this.socket?.on('unoState', (data: UnoClientState) => {
-      this.emitLocal('gameState', data);
-    });
-    this.socket?.on('lobbyEnded', () => this.emitLocal('lobbyEnded', null));
-  }
-
-  override async connect(): Promise<string> {
-    const id = await super.connect();
-    this.bindGameState();
-    return id;
+    super('/uno', 'uno');
   }
 
   createLobby(): Promise<UnoCreateLobbyResponse> {
-    return this.emitWithAck<UnoCreateLobbyResponse>('createLobby', { gameType: 'uno' });
+    return this.emitAck<UnoCreateLobbyResponse>('createLobby', { gameType: 'uno' });
   }
 
   joinLobby(code: string): Promise<UnoJoinLobbyResponse> {
-    return this.emitWithAck<UnoJoinLobbyResponse>('joinLobby', { gameType: 'uno', code });
+    return this.emitAck<UnoJoinLobbyResponse>('joinLobby', { gameType: 'uno', code });
   }
 
-  startGame(lobbyCode: string) {
-    return this.emitWithAck<{ success: boolean; error?: string }>('startGame', {
-      gameType: 'uno',
-      lobbyCode,
-    });
+  startGame(lobbyCode: string): Promise<{ success: boolean; error?: string }> {
+    return this.emitAck('startGame', { gameType: 'uno', lobbyCode });
   }
 
-  sendAction(lobbyCode: string, action: UnoPlayerAction) {
-    return this.emitWithAck<{ success: boolean; error?: string }>('playerAction', {
-      gameType: 'uno',
-      lobbyCode,
-      action,
-    });
+  sendAction(
+    lobbyCode: string,
+    action: UnoPlayerAction,
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.emitAck('playerAction', { gameType: 'uno', lobbyCode, action });
   }
 
-  requestState(lobbyCode: string) {
-    return this.emitWithAck<{ success: boolean; gameState?: UnoClientState }>('requestState', {
-      gameType: 'uno',
-      lobbyCode,
-    });
+  requestState(lobbyCode: string): Promise<{ success: boolean; gameState?: UnoClientState }> {
+    return this.emitAck('requestState', { gameType: 'uno', lobbyCode });
   }
 
-  endLobby(lobbyCode: string) {
-    return this.emitWithAck<{ success: boolean; error?: string }>('endLobby', {
-      gameType: 'uno',
-      lobbyCode,
-    });
+  endLobby(lobbyCode: string): Promise<{ success: boolean; error?: string }> {
+    return this.emitAck('endLobby', { gameType: 'uno', lobbyCode });
   }
 }
 
 export const unoSocket = new UnoSocket();
+
+/* ───────── dev helpers ───────── */
+if (ENV.DEV && typeof window !== 'undefined') {
+  (window as any).pokerSocket = pokerSocket;
+  (window as any).unoSocket = unoSocket;
+}
