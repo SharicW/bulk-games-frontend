@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuth } from '../hooks/useAuth'
 import Modal from '../components/Modal'
+import WinCelebration from '../components/WinCelebration'
 import tableLogo from '/assets/BULK_GAMES_LOGO.png'
 import { unoSocket } from '../services/socket'
 import type { UnoCard, UnoCardFace, UnoClientState, UnoColor } from '../types/uno'
@@ -230,8 +231,9 @@ const UnoCardImg = memo(function UnoCardImg({ card, images, className, dimmed, g
       title={cardLabel(card.face)}
       initial={{ opacity: 0, scale: 0.85, y: 12 }}
       animate={{ opacity: dimmed ? 0.45 : 1, scale: 1, y: 0 }}
-      whileHover={onClick ? { scale: 1.18, y: -22, zIndex: 20 } : undefined}
-      transition={{ duration: 0.18 }}
+      whileHover={onClick ? { scale: 1.18, y: -22 } : undefined}
+      transition={{ duration: 0.35, ease: 'easeOut' }}
+      style={{ transformOrigin: 'center bottom' }}
     >
       {src ? (
         <img src={src} alt={cardLabel(card.face)} decoding="async" loading="eager" />
@@ -663,11 +665,13 @@ function Uno() {
                 const rot = offset * (spread <= 6 ? 6 : 4)
                 const x = offset * (spread <= 6 ? 36 : 28)
                 const y = Math.abs(offset) * 2
-                const style = { transform: `translateX(${x}px) translateY(${y}px) rotate(${rot}deg)` }
+                const wrapperStyle: React.CSSProperties = {
+                  transform: `translateX(${x}px) translateY(${y}px) rotate(${rot}deg)`,
+                }
                 const canClick = isMyTurn && playable.has(c.id)
                 const dim = isMyTurn && !playable.has(c.id)
                 return (
-                  <div key={c.id} className="uno-hand__card" style={style}>
+                  <div key={c.id} className="uno-hand__card" style={wrapperStyle}>
                     <UnoCardImg
                       card={c}
                       images={images}
@@ -685,6 +689,7 @@ function Uno() {
 
       {state.phase === 'finished' && (
         <div className="uno-end-overlay">
+          <WinCelebration show={!!state.winnerId} />
           <div className="uno-end-card">
             <h2>Game Over</h2>
             <p className="muted">{winner ? `${winner.nickname} wins!` : 'Winner decided.'}</p>
