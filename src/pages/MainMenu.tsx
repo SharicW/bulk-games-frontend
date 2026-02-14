@@ -1,13 +1,37 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRole } from '../hooks/useRole'
 import { useAuth } from '../hooks/useAuth'
 import GameCard from '../components/GameCard'
 import Modal from '../components/Modal'
 import { pokerSocket, unoSocket } from '../services/socket'
+import { apiListPublicRooms, type PublicRoomInfo } from '../services/api'
 
 function MainMenu() {
   const { role } = useRole()
   const { isLoggedIn } = useAuth()
+
+  const [publicRooms, setPublicRooms] = useState<PublicRoomInfo[]>([])
+  const roomsByKey = useMemo(() => {
+    const m = new Map<string, PublicRoomInfo>()
+    for (const r of publicRooms) m.set(`${r.gameType}:${r.code}`, r)
+    return m
+  }, [publicRooms])
+
+  useEffect(() => {
+    if (!isLoggedIn) return
+    let stopped = false
+    const load = async () => {
+      try {
+        const res = await apiListPublicRooms()
+        if (!stopped) setPublicRooms(res.rooms || [])
+      } catch {
+        if (!stopped) setPublicRooms([])
+      }
+    }
+    load()
+    const t = window.setInterval(load, 3500)
+    return () => { stopped = true; window.clearInterval(t) }
+  }, [isLoggedIn])
   
   const [joinModalOpen, setJoinModalOpen] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
@@ -141,6 +165,73 @@ function MainMenu() {
         </div>
       )}
 
+      {/* Public rooms */}
+      {isLoggedIn && (
+        <div className="card" style={{ marginTop: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div>
+              <div className="eyebrow">Quick Play</div>
+              <div style={{ fontSize: '18px', fontWeight: 700 }}>Public Rooms</div>
+              <div className="muted" style={{ marginTop: '4px' }}>3 rooms per game, always online</div>
+            </div>
+          </div>
+
+          <div className="card-grid" style={{ marginTop: '14px' }}>
+            {(['POKER_PUBLIC_1', 'POKER_PUBLIC_2', 'POKER_PUBLIC_3'] as const).map((code, i) => {
+              const r = roomsByKey.get(`poker:${code}`)
+              const disabled = r?.status === 'in_game'
+              return (
+                <div key={code} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'baseline' }}>
+                    <div style={{ fontWeight: 800 }}>Poker Room {i + 1}</div>
+                    <div className="muted" style={{ fontSize: '12px' }}>
+                      {r ? `${r.playerCount}/${r.maxPlayers}` : '—'}
+                    </div>
+                  </div>
+                  <div className="muted" style={{ fontSize: '13px' }}>
+                    Status: {r?.status === 'in_game' ? 'In game' : 'Lobby'}
+                  </div>
+                  <button
+                    className={disabled ? 'btn-secondary' : 'btn-primary'}
+                    disabled={disabled}
+                    onClick={() => window.open(`/game/poker?lobby=${code}`, '_blank')}
+                    style={{ width: 'auto', padding: '10px 14px' }}
+                  >
+                    {disabled ? 'In Game' : 'Join'}
+                  </button>
+                </div>
+              )
+            })}
+
+            {(['UNO_PUBLIC_1', 'UNO_PUBLIC_2', 'UNO_PUBLIC_3'] as const).map((code, i) => {
+              const r = roomsByKey.get(`uno:${code}`)
+              const disabled = r?.status === 'in_game'
+              return (
+                <div key={code} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'baseline' }}>
+                    <div style={{ fontWeight: 800 }}>UNO Room {i + 1}</div>
+                    <div className="muted" style={{ fontSize: '12px' }}>
+                      {r ? `${r.playerCount}/${r.maxPlayers}` : '—'}
+                    </div>
+                  </div>
+                  <div className="muted" style={{ fontSize: '13px' }}>
+                    Status: {r?.status === 'in_game' ? 'In game' : 'Lobby'}
+                  </div>
+                  <button
+                    className={disabled ? 'btn-secondary' : 'btn-primary'}
+                    disabled={disabled}
+                    onClick={() => window.open(`/game/uno?lobby=${code}`, '_blank')}
+                    style={{ width: 'auto', padding: '10px 14px' }}
+                  >
+                    {disabled ? 'In Game' : 'Join'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="card-grid" style={{ marginTop: '16px' }}>
         <GameCard
           name="Poker"
@@ -171,8 +262,8 @@ function MainMenu() {
             type="text"
             value={joinCode}
             onChange={e => setJoinCode(e.target.value.toUpperCase())}
-            placeholder="Enter 6-character code"
-            maxLength={6}
+            placeholder="Enter lobby code"
+            maxLength={32}
             disabled={loading}
           />
         </div>
