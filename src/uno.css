@@ -96,7 +96,7 @@
   border: clamp(6px, 1vw, 12px) solid #3d2b1f;
   border-radius: 50%;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .uno-table__felt::before {
@@ -392,7 +392,7 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
   min-height: 48px;
   z-index: 10;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .uno-actions {
@@ -438,6 +438,7 @@
   padding: 6px 12px 14px;
   box-sizing: border-box;
   min-height: 140px;
+  overflow: visible;
 }
 
 .uno-hand__fan {
@@ -446,6 +447,7 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  overflow: visible;
 }
 
 .uno-hand__card {
@@ -464,7 +466,7 @@
   overflow: hidden;
   padding: 0;
   cursor: pointer;
-  transition: transform 0.12s ease, filter 0.12s ease, opacity 0.12s ease, box-shadow 0.12s ease;
+  transition: transform 0.22s ease-out, filter 0.22s ease-out, opacity 0.22s ease-out, box-shadow 0.22s ease-out;
 }
 
 .uno-card img {
@@ -531,7 +533,7 @@
 }
 
 .uno-discard__card {
-  animation: unoDiscardPop 0.26s ease both;
+  animation: unoDiscardPop 0.4s ease-out both;
 }
 
 @keyframes unoDiscardPop {
