@@ -61,6 +61,9 @@ export interface UnoClientState {
   lobbyCode: string;
   hostId: string;
   players: UnoClientPlayer[];
+  isPublic?: boolean;
+  maxPlayers?: number;
+  celebration?: null | { id: string; winnerId: string; effectId: 'stars' | 'red_hearts' | 'black_hearts'; createdAt?: number };
 
   phase: UnoPhase;
   gameStarted: boolean;
