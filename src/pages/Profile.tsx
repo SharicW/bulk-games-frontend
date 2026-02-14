@@ -1,5 +1,6 @@
-import { useEffect, useState, useRef, ChangeEvent } from 'react'
+import { useEffect, useMemo, useState, useRef, ChangeEvent } from 'react'
 import { useAuth } from '../hooks/useAuth'
+import { apiGetShopItems, type ShopItem } from '../services/api'
 
 /** Build CSS classes for player cosmetics (same map used in Poker/UNO) */
 const BORDER_MAP: Record<string, string> = {
@@ -45,6 +46,16 @@ function Profile() {
   const [passwordSuccess, setPasswordSuccess] = useState('')
   
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [catalog, setCatalog] = useState<ShopItem[] | null>(null)
+  const catalogMap = useMemo(() => new Map((catalog || []).map(i => [i.id, i])), [catalog])
+
+  useEffect(() => {
+    if (!isLoggedIn) return
+    apiGetShopItems()
+      .then(res => setCatalog(res.items || []))
+      .catch(() => setCatalog([]))
+  }, [isLoggedIn])
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -284,12 +295,12 @@ function Profile() {
         </div>
         {user?.equippedBorder && (
           <span className="muted" style={{ marginLeft: 'auto', fontSize: '12px' }}>
-            Border: {user.equippedBorder}
+            Border: {catalogMap.get(user.equippedBorder)?.name || user.equippedBorder}
           </span>
         )}
         {user?.equippedEffect && (
           <span className="muted" style={{ marginLeft: '8px', fontSize: '12px' }}>
-            Effect: {user.equippedEffect}
+            Effect: {catalogMap.get(user.equippedEffect)?.name || user.equippedEffect}
           </span>
         )}
       </div>
