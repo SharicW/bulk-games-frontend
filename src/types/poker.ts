@@ -53,6 +53,9 @@ export interface ClientGameState {
   hostId: string;
   players: ClientPlayer[];
   gameStarted: boolean;
+  isPublic?: boolean;
+  maxPlayers?: number;
+  celebration?: null | { id: string; winnerId: string; effectId: 'stars' | 'red_hearts' | 'black_hearts'; createdAt?: number };
   communityCards: Card[];
   pot: number;
   currentBet: number;
