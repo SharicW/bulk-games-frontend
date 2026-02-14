@@ -259,6 +259,10 @@ function Uno() {
   const [colorModalOpen, setColorModalOpen] = useState(false)
   const [pendingWildCardId, setPendingWildCardId] = useState<string | null>(null)
 
+  // ── Celebration (server-driven; visible to everyone) ───────────
+  const [celebration, setCelebration] = useState<null | { id: string; effectId: 'stars' | 'red_hearts' | 'black_hearts' }>(null)
+  const celebrationTimerRef = useRef<number | null>(null)
+
   const images = useMemo(() => buildUnoImages(), [])
 
   // ── Version tracking for synchronization ──────────────────────
@@ -305,6 +309,7 @@ function Uno() {
 
   const uid = user?.id ?? ''
   const isHost = state?.hostId === uid
+  const isPublic = !!state?.isPublic
   const me = state?.players.find(p => p.playerId === uid) || null
   const myHand = state?.hands?.[uid] || []
   const topCard = state?.discardPile?.length ? state.discardPile[state.discardPile.length - 1] : null
@@ -371,6 +376,17 @@ function Uno() {
       applyState(next)
     })
 
+    const unsubscribeCelebration = unoSocket.on('game:celebration', (payload) => {
+      const p = payload as any
+      const id = String(p?.id || '')
+      const effectId = (p?.effectId || 'stars') as 'stars' | 'red_hearts' | 'black_hearts'
+      if (!id) return
+      if (IS_DEV) console.log(`[uno:celebration] id=${id} effect=${effectId}`)
+      setCelebration({ id, effectId })
+      if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
+      celebrationTimerRef.current = window.setTimeout(() => setCelebration(null), 1600)
+    })
+
     const unsubscribeEnd = unoSocket.on('lobbyEnded', () => {
       setError('Lobby has been closed by the host')
     })
@@ -382,8 +398,10 @@ function Uno() {
     return () => {
       stopped = true
       unsubscribeState()
+      unsubscribeCelebration()
       unsubscribeEnd()
       unsubscribeConnect()
+      if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
     }
   }, [lobbyCode, isLoggedIn, user?.id, applyState])
 
@@ -507,13 +525,22 @@ function Uno() {
 
         {isHost && (
           <div className="uno-header__controls">
-            {state.phase === 'lobby' && state.players.length >= 2 && (
+            {state.phase === 'lobby' && state.players.length >= 2 && (isHost || isPublic) && (
               <button className="btn-primary" onClick={handleStartGame} style={{ width: 'auto', padding: '8px 16px' }}>
                 Start Game
               </button>
             )}
-            <button className="btn-secondary" onClick={handleEndLobby} style={{ width: 'auto', padding: '8px 16px' }}>
-              End Lobby
+            {isHost && !isPublic && (
+              <button className="btn-secondary" onClick={handleEndLobby} style={{ width: 'auto', padding: '8px 16px' }}>
+                End Lobby
+              </button>
+            )}
+          </div>
+        )}
+        {!isHost && isPublic && state.phase === 'lobby' && state.players.length >= 2 && (
+          <div className="uno-header__controls">
+            <button className="btn-primary" onClick={handleStartGame} style={{ width: 'auto', padding: '8px 16px' }}>
+              Start Game
             </button>
           </div>
         )}
@@ -526,6 +553,8 @@ function Uno() {
               <div className="uno-table__logo">
                 <img src={tableLogo} alt="Bulk Games" />
               </div>
+
+              <WinCelebration show={!!celebration} effectId={celebration?.effectId || 'stars'} />
 
               <div className="uno-center">
                 <div className="uno-deck" aria-label="Draw deck">
@@ -689,7 +718,6 @@ function Uno() {
 
       {state.phase === 'finished' && (
         <div className="uno-end-overlay">
-          <WinCelebration show={!!state.winnerId} />
           <div className="uno-end-card">
             <h2>Game Over</h2>
             <p className="muted">{winner ? `${winner.nickname} wins!` : 'Winner decided.'}</p>
