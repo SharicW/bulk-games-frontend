@@ -352,6 +352,10 @@ function Poker() {
   const [connected, setConnected] = useState(false)
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
   const [maxTime, setMaxTime] = useState(30)
+
+  // ── Celebration (server-driven; visible to everyone) ───────────
+  const [celebration, setCelebration] = useState<null | { id: string; effectId: 'stars' | 'red_hearts' | 'black_hearts' }>(null)
+  const celebrationTimerRef = useRef<number | null>(null)
   
   const timerRef = useRef<number | null>(null)
 
@@ -463,6 +467,17 @@ function Poker() {
         }, 5000)
       }
     })
+
+    const unsubscribeCelebration = pokerSocket.on('game:celebration', (payload) => {
+      const p = payload as any
+      const id = String(p?.id || '')
+      const effectId = (p?.effectId || 'stars') as 'stars' | 'red_hearts' | 'black_hearts'
+      if (!id) return
+      if (IS_DEV) console.log(`[poker:celebration] id=${id} effect=${effectId}`)
+      setCelebration({ id, effectId })
+      if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
+      celebrationTimerRef.current = window.setTimeout(() => setCelebration(null), 1600)
+    })
     
     const unsubscribeEnd = pokerSocket.on('lobbyEnded', () => {
       setError('Lobby has been closed by the host')
@@ -483,10 +498,12 @@ function Poker() {
     
     return () => {
       unsubscribe()
+      unsubscribeCelebration()
       unsubscribeEnd()
       unsubscribeConnect()
       if (timerRef.current) clearInterval(timerRef.current)
       if (showdownTimeoutRef.current) clearTimeout(showdownTimeoutRef.current)
+      if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
       showdownLockRef.current = false
       pendingStateRef.current = null
     }
@@ -560,6 +577,7 @@ function Poker() {
   }, [gameState])
   
   const isHost = gameState?.hostId === user?.id
+  const isPublic = !!gameState?.isPublic
 
   // ── Best hand evaluation (state-tracked: only upgrade, never downgrade) ──
   // Hooks MUST be above early returns to satisfy Rules of Hooks.
@@ -682,13 +700,22 @@ function Poker() {
         
         {isHost && (
           <div className="poker-header__controls">
-            {!gameState.gameStarted && gameState.players.length >= 2 && (
+            {(!gameState.gameStarted && gameState.players.length >= 2 && (isHost || isPublic)) && (
               <button className="btn-primary" onClick={handleStartGame}>
                 Start Game
               </button>
             )}
-            <button className="btn-secondary" onClick={handleEndLobby}>
-              End Lobby
+            {isHost && !isPublic && (
+              <button className="btn-secondary" onClick={handleEndLobby}>
+                End Lobby
+              </button>
+            )}
+          </div>
+        )}
+        {!isHost && isPublic && !gameState.gameStarted && gameState.players.length >= 2 && (
+          <div className="poker-header__controls">
+            <button className="btn-primary" onClick={handleStartGame}>
+              Start Game
             </button>
           </div>
         )}
@@ -747,7 +774,7 @@ function Poker() {
               )}
 
               {/* Win celebration stars */}
-              <WinCelebration show={!!(gameState.winners && gameState.winners.length > 0)} />
+              <WinCelebration show={!!celebration} effectId={celebration?.effectId || 'stars'} />
             </div>
             
             <div className="poker-table__seats">
