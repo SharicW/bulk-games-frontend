@@ -134,3 +134,18 @@ export async function apiEquipItem(itemId: string | null, slot?: 'border' | 'eff
   });
 }
 
+/* ── Public rooms ─────────────────────────────────────────────── */
+
+export interface PublicRoomInfo {
+  gameType: 'poker' | 'uno';
+  code: string;
+  playerCount: number;
+  status: 'lobby' | 'in_game';
+  maxPlayers: number;
+}
+
+export async function apiListPublicRooms(gameType?: 'poker' | 'uno'): Promise<{ rooms: PublicRoomInfo[] }> {
+  const qs = gameType ? `?gameType=${encodeURIComponent(gameType)}` : '';
+  return request(`/public/rooms${qs}`, { method: 'GET' });
+}
+
