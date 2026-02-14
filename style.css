@@ -2375,6 +2375,7 @@ hr.divider {
   position: absolute;
   inset: 0;
   background: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.25) 100%);
+  border-radius: inherit;
   pointer-events: none;
   z-index: 0;
 }
@@ -2482,9 +2483,9 @@ hr.divider {
   z-index: 5;
 }
 
+/* Turn highlight should NOT override cosmetic borders — use a soft glow (no ring) */
 .poker-seat--active .poker-seat__avatar {
-  box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.8);
-  animation: activeGlow 2s ease-in-out infinite;
+  animation: activeGlow 1.8s ease-in-out infinite;
 }
 
 .poker-seat--active .poker-seat__info {
@@ -3118,8 +3119,8 @@ hr.divider {
 }
 
 @keyframes activeGlow {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.5), 0 0 14px rgba(255, 215, 0, 0.12); }
-  50% { box-shadow: 0 0 0 5px rgba(255, 215, 0, 1), 0 0 28px rgba(255, 215, 0, 0.35); }
+  0%, 100% { box-shadow: 0 0 14px rgba(255, 215, 0, 0.16), 0 0 24px rgba(255, 215, 0, 0.10); }
+  50% { box-shadow: 0 0 18px rgba(255, 215, 0, 0.28), 0 0 32px rgba(255, 215, 0, 0.16); }
 }
 
 .poker-table__community .poker-card:not(.poker-card--empty) {
@@ -3277,7 +3278,8 @@ hr.divider {
   inset: 0;
   pointer-events: none;
   z-index: 50;
-  overflow: hidden;
+  overflow: visible;
+  background: transparent;
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -3515,4 +3517,19 @@ hr.divider {
 @keyframes cosmeticPulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.06); }
+}
+
+/* ── Win celebration cosmetics (avatar-only subtle styling) ───────── */
+.cosmetic-effect--hearts-red .shop-item__avatar-demo,
+.cosmetic-effect--hearts-red .poker-seat__avatar,
+.cosmetic-effect--hearts-red .uno-seat__avatar,
+.cosmetic-effect--hearts-red .profile-avatar__preview {
+  filter: drop-shadow(0 0 8px rgba(255, 45, 85, 0.45));
+}
+
+.cosmetic-effect--hearts-black .shop-item__avatar-demo,
+.cosmetic-effect--hearts-black .poker-seat__avatar,
+.cosmetic-effect--hearts-black .uno-seat__avatar,
+.cosmetic-effect--hearts-black .profile-avatar__preview {
+  filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.55));
 }
