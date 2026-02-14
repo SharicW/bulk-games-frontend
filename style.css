@@ -2367,7 +2367,7 @@ hr.divider {
   justify-content: center;
   gap: clamp(10px, 2vw, 20px);
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .poker-table__felt::before {
@@ -2694,6 +2694,7 @@ hr.divider {
   gap: clamp(6px, 1vw, 10px);
   padding: clamp(6px, 1vw, 10px);
   flex-shrink: 0;
+  overflow: visible;
 }
 
 .poker-my-cards .poker-card {
@@ -2954,13 +2955,13 @@ hr.divider {
   background: rgba(255, 215, 0, 0.2);
   border: 2px solid #ffd700;
   border-radius: var(--radius-sm);
-  animation: winnerFade 0.5s ease;
+  animation: winnerFade 0.6s ease-out;
   font-size: clamp(13px, 1.6vw, 17px);
 }
 
 @keyframes winnerFade {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(10px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .poker-showdown__name {
@@ -3054,43 +3055,21 @@ hr.divider {
   text-transform: uppercase;
 }
 
-/* Kicker badge */
-.poker-kicker-badge {
-  position: absolute;
-  top: -8px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #fff;
-  background: rgba(255, 107, 107, 0.85);
-  padding: 1px 6px;
-  border-radius: 4px;
+/* Kicker pill (shown near hand label in bottom bar, not on cards) */
+.poker-kicker-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 107, 107, 0.95);
+  text-align: center;
+  padding: 3px 12px;
+  background: rgba(255, 107, 107, 0.12);
+  border: 1px solid rgba(255, 107, 107, 0.25);
+  border-radius: 999px;
   white-space: nowrap;
-  z-index: 5;
-  pointer-events: none;
-  line-height: 1.4;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
-  animation: kickerBadgePop 0.3s ease both;
-}
-
-@keyframes kickerBadgePop {
-  0% { transform: translateX(-50%) scale(0.6); opacity: 0; }
-  60% { transform: translateX(-50%) scale(1.1); opacity: 1; }
-  100% { transform: translateX(-50%) scale(1); opacity: 1; }
-}
-
-.poker-my-cards .poker-kicker-badge {
-  top: -10px;
-  font-size: 10px;
-  padding: 2px 8px;
-}
-
-.poker-table__community .poker-kicker-badge {
-  top: -8px;
-  font-size: 8px;
+  letter-spacing: 0.3px;
 }
 
 /* Hand label */
@@ -3124,6 +3103,7 @@ hr.divider {
   animation: panelSlideUp 0.3s ease both;
   min-height: 48px;
   z-index: 10;
+  overflow: visible;
 }
 
 /* Poker animations */
@@ -3143,20 +3123,20 @@ hr.divider {
 }
 
 .poker-table__community .poker-card:not(.poker-card--empty) {
-  animation: cardDeal 0.35s ease both;
+  animation: cardDeal 0.5s ease-out both;
 }
 
-.poker-table__community .poker-card:nth-child(2) { animation-delay: 0.06s; }
-.poker-table__community .poker-card:nth-child(3) { animation-delay: 0.12s; }
-.poker-table__community .poker-card:nth-child(4) { animation-delay: 0.18s; }
-.poker-table__community .poker-card:nth-child(5) { animation-delay: 0.24s; }
+.poker-table__community .poker-card:nth-child(2) { animation-delay: 0.08s; }
+.poker-table__community .poker-card:nth-child(3) { animation-delay: 0.16s; }
+.poker-table__community .poker-card:nth-child(4) { animation-delay: 0.24s; }
+.poker-table__community .poker-card:nth-child(5) { animation-delay: 0.32s; }
 
 .poker-my-cards .poker-card {
-  animation: cardDeal 0.4s ease both;
+  animation: cardDeal 0.55s ease-out both;
 }
 
 .poker-my-cards .poker-card:nth-child(2) {
-  animation-delay: 0.1s;
+  animation-delay: 0.12s;
 }
 
 /* Seat hover */
@@ -3285,6 +3265,19 @@ hr.divider {
 /* ── Poker my-cards animated wrapper ───────────────────────────── */
 .poker-my-cards__animated {
   display: inline-block;
+  transform-origin: center bottom;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Win celebration overlay (shared by Poker & UNO)
+   ══════════════════════════════════════════════════════════════════ */
+
+.win-celebration-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  overflow: hidden;
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -3440,14 +3433,16 @@ hr.divider {
 
 .cosmetic-border--gold .shop-item__avatar-demo,
 .cosmetic-border--gold .poker-seat__avatar,
-.cosmetic-border--gold .uno-seat__avatar {
+.cosmetic-border--gold .uno-seat__avatar,
+.cosmetic-border--gold .profile-avatar__preview {
   border: 3px solid #ffd700;
   box-shadow: 0 0 8px rgba(255, 215, 0, 0.4);
 }
 
 .cosmetic-border--rainbow .shop-item__avatar-demo,
 .cosmetic-border--rainbow .poker-seat__avatar,
-.cosmetic-border--rainbow .uno-seat__avatar {
+.cosmetic-border--rainbow .uno-seat__avatar,
+.cosmetic-border--rainbow .profile-avatar__preview {
   border: 3px solid transparent;
   background-clip: padding-box;
   box-shadow: 0 0 0 3px transparent;
@@ -3468,14 +3463,16 @@ hr.divider {
 
 .cosmetic-border--neon .shop-item__avatar-demo,
 .cosmetic-border--neon .poker-seat__avatar,
-.cosmetic-border--neon .uno-seat__avatar {
+.cosmetic-border--neon .uno-seat__avatar,
+.cosmetic-border--neon .profile-avatar__preview {
   border: 2px solid #00ff88;
   box-shadow: 0 0 12px rgba(0, 255, 136, 0.5), inset 0 0 6px rgba(0, 255, 136, 0.15);
 }
 
 .cosmetic-border--fire .shop-item__avatar-demo,
 .cosmetic-border--fire .poker-seat__avatar,
-.cosmetic-border--fire .uno-seat__avatar {
+.cosmetic-border--fire .uno-seat__avatar,
+.cosmetic-border--fire .profile-avatar__preview {
   border: 3px solid #ff4500;
   box-shadow: 0 0 10px rgba(255, 69, 0, 0.5), 0 0 20px rgba(255, 69, 0, 0.2);
 }
@@ -3484,13 +3481,15 @@ hr.divider {
 
 .cosmetic-effect--glow .shop-item__avatar-demo,
 .cosmetic-effect--glow .poker-seat__avatar,
-.cosmetic-effect--glow .uno-seat__avatar {
+.cosmetic-effect--glow .uno-seat__avatar,
+.cosmetic-effect--glow .profile-avatar__preview {
   filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.5));
 }
 
 .cosmetic-effect--sparkle .shop-item__avatar-demo,
 .cosmetic-effect--sparkle .poker-seat__avatar,
-.cosmetic-effect--sparkle .uno-seat__avatar {
+.cosmetic-effect--sparkle .uno-seat__avatar,
+.cosmetic-effect--sparkle .profile-avatar__preview {
   animation: cosmeticSparkle 2s ease-in-out infinite;
 }
 
@@ -3501,13 +3500,15 @@ hr.divider {
 
 .cosmetic-effect--shadow .shop-item__avatar-demo,
 .cosmetic-effect--shadow .poker-seat__avatar,
-.cosmetic-effect--shadow .uno-seat__avatar {
+.cosmetic-effect--shadow .uno-seat__avatar,
+.cosmetic-effect--shadow .profile-avatar__preview {
   box-shadow: 0 0 16px rgba(100, 0, 200, 0.5), 0 0 32px rgba(100, 0, 200, 0.2);
 }
 
 .cosmetic-effect--pulse .shop-item__avatar-demo,
 .cosmetic-effect--pulse .poker-seat__avatar,
-.cosmetic-effect--pulse .uno-seat__avatar {
+.cosmetic-effect--pulse .uno-seat__avatar,
+.cosmetic-effect--pulse .profile-avatar__preview {
   animation: cosmeticPulse 2s ease-in-out infinite;
 }
 
