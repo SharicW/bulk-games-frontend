@@ -138,6 +138,11 @@ class NamespacedSocket {
         this.emitLocal('gameState', data)
       })
 
+      s.on('game:celebration', (data: any) => {
+        if (IS_DEV) this.log('game:celebration received', data)
+        this.emitLocal('game:celebration', data)
+      })
+
       s.on('lobbyEnded', () => {
         this.log('lobbyEnded received')
         this.emitLocal('lobbyEnded', null)
