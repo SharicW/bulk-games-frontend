@@ -1,6 +1,26 @@
 import { useEffect, useState, useRef, ChangeEvent } from 'react'
 import { useAuth } from '../hooks/useAuth'
 
+/** Build CSS classes for player cosmetics (same map used in Poker/UNO) */
+const BORDER_MAP: Record<string, string> = {
+  border_gold: 'cosmetic-border--gold',
+  border_rainbow: 'cosmetic-border--rainbow',
+  border_neon: 'cosmetic-border--neon',
+  border_fire: 'cosmetic-border--fire',
+}
+const EFFECT_MAP: Record<string, string> = {
+  effect_glow: 'cosmetic-effect--glow',
+  effect_sparkle: 'cosmetic-effect--sparkle',
+  effect_shadow: 'cosmetic-effect--shadow',
+  effect_pulse: 'cosmetic-effect--pulse',
+}
+function buildCosmeticClasses(border: string | null | undefined, effect: string | null | undefined): string {
+  const classes: string[] = []
+  if (border && BORDER_MAP[border]) classes.push(BORDER_MAP[border])
+  if (effect && EFFECT_MAP[effect]) classes.push(EFFECT_MAP[effect])
+  return classes.join(' ')
+}
+
 type AuthMode = 'login' | 'register'
 
 function Profile() {
@@ -275,10 +295,10 @@ function Profile() {
       </div>
 
       <div className="profile-grid" style={{ marginTop: '16px' }}>
-        <div className="card profile-card">
+          <div className="card profile-card">
           <h3 className="profile-card__title">Avatar</h3>
           <div className="profile-card__content">
-            <div className="profile-avatar">
+            <div className={`profile-avatar ${buildCosmeticClasses(user?.equippedBorder, user?.equippedEffect)}`}>
               <div className={`profile-avatar__preview${avatarPreview ? ' profile-avatar__preview--filled' : ''}`}>
                 {avatarPreview ? (
                   <img src={avatarPreview} alt="Avatar" className="profile-avatar__image" />
