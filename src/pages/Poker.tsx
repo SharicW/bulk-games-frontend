@@ -6,6 +6,7 @@ import { pokerSocket } from '../services/socket'
 import { getCardImageUrl, formatCard, getSuitColor, preloadPokerCards } from '../utils/cards'
 import type { ClientGameState, ClientPlayer, Card, PlayerAction } from '../types/poker'
 import { getBestHand, cardKey, type HandResult } from '../utils/handEval'
+import WinCelebration from '../components/WinCelebration'
 import tableLogo from '/assets/BULK_GAMES_LOGO.png'
 
 /* Preload card images as soon as this module is imported (code-split by route) */
@@ -92,13 +93,11 @@ const CardDisplay = memo(function CardDisplay({
   isHidden = false,
   highlighted = false,
   dimmed = false,
-  isKicker = false,
 }: {
   card: Card | null
   isHidden?: boolean
   highlighted?: boolean
   dimmed?: boolean
-  isKicker?: boolean
 }) {
   if (!card || isHidden) {
     return (
@@ -128,12 +127,37 @@ const CardDisplay = memo(function CardDisplay({
           </span>
         </div>
       )}
-      {isKicker && (
-        <span className="poker-kicker-badge">Kicker</span>
-      )}
     </div>
   )
 })
+
+// ── Suit symbol helper ──────────────────────────────────────────
+function suitSymbol(suit: string): string {
+  switch (suit) {
+    case 'hearts': return '♥'
+    case 'diamonds': return '♦'
+    case 'clubs': return '♣'
+    case 'spades': return '♠'
+    default: return ''
+  }
+}
+
+// ── Kicker pill (shown near hand label, not on cards) ───────────
+function KickerPill({ cards }: { cards: Card[] }) {
+  if (!cards.length) return null
+  const label = cards.map(c => `${c.rank}${suitSymbol(c.suit)}`).join(', ')
+  return (
+    <motion.div
+      className="poker-kicker-pill"
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.3 }}
+    >
+      Kicker: {label}
+    </motion.div>
+  )
+}
 
 // ── Hand rankings guide ────────────────────────────────────────────
 
@@ -562,6 +586,14 @@ function Poker() {
     return new Set(bestHand.kickerKeys)
   }, [bestHand])
 
+  /** Actual Card objects for kickers (used by KickerPill) */
+  const kickerCards = useMemo<Card[]>(() => {
+    if (!bestHand || !kickerKeysSet.size) return []
+    const NO_KICKER_HANDS = ['Straight', 'Flush', 'Full House', 'Straight Flush', 'Royal Flush', 'High Card']
+    if (NO_KICKER_HANDS.includes(bestHand.name)) return []
+    return bestHand.best5.filter(c => kickerKeysSet.has(cardKey(c)))
+  }, [bestHand, kickerKeysSet])
+
   // DEV-only debug: print best5 and kicker keys
   if (IS_DEV && bestHand) {
     const b5 = bestHand.best5.map(c => cardKey(c)).join(', ')
@@ -672,20 +704,19 @@ function Poker() {
               
               <div className="poker-table__community">
                 <AnimatePresence mode="popLayout">
-                  {gameState.communityCards.map((card) => {
+                  {gameState.communityCards.map((card, i) => {
                     const k = cardKey(card)
                     const hl = best5Keys.has(k)
-                    const isK = kickerKeysSet.has(k)
                     return (
                       <motion.div
                         key={k}
                         initial={{ opacity: 0, scale: 0.85, y: 12 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.9, y: -8 }}
-                        transition={{ duration: 0.22 }}
+                        transition={{ duration: 0.45, delay: i * 0.07, ease: 'easeOut' }}
                         layout
                       >
-                        <CardDisplay card={card} highlighted={hl} dimmed={bestHand !== null && !hl} isKicker={hl && isK} />
+                        <CardDisplay card={card} highlighted={hl} dimmed={bestHand !== null && !hl} />
                       </motion.div>
                     )
                   })}
@@ -714,6 +745,9 @@ function Poker() {
                   })}
                 </div>
               )}
+
+              {/* Win celebration stars */}
+              <WinCelebration show={!!(gameState.winners && gameState.winners.length > 0)} />
             </div>
             
             <div className="poker-table__seats">
@@ -768,7 +802,6 @@ function Poker() {
                 {gameState.myHoleCards.map((card, i) => {
                   const k = cardKey(card)
                   const hl = best5Keys.has(k)
-                  const isK = kickerKeysSet.has(k)
                   return (
                     <motion.div
                       key={k}
@@ -776,11 +809,11 @@ function Poker() {
                       initial={{ opacity: 0, scale: 0.85, y: 12 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.9, y: -8 }}
-                      transition={{ duration: 0.22, delay: i * 0.08 }}
-                      whileHover={{ scale: 1.18, y: -22, zIndex: 10 }}
-                      style={{ position: 'relative', zIndex: i }}
+                      transition={{ duration: 0.5, delay: i * 0.09, ease: 'easeOut' }}
+                      whileHover={{ scale: 1.18, y: -22, zIndex: 9999 }}
+                      style={{ position: 'relative', zIndex: i, transformOrigin: 'center bottom' }}
                     >
-                      <CardDisplay card={card} highlighted={hl} dimmed={bestHand !== null && !hl} isKicker={hl && isK} />
+                      <CardDisplay card={card} highlighted={hl} dimmed={bestHand !== null && !hl} />
                     </motion.div>
                   )
                 })}
@@ -790,6 +823,9 @@ function Poker() {
           {bestHand && (
             <div className="poker-hand-label">{bestHand.name}</div>
           )}
+          <AnimatePresence>
+            {kickerCards.length > 0 && <KickerPill cards={kickerCards} />}
+          </AnimatePresence>
           <ActionPanel gameState={gameState} onAction={handleAction} />
         </div>
       )}
