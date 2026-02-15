@@ -31,6 +31,7 @@ export interface ActionAck {
   accepted?: boolean
   reason?: string
   version?: number
+  gameState?: any
   error?: string
 }
 
@@ -138,6 +139,10 @@ class NamespacedSocket {
         this.emitLocal('gameState', data)
       })
 
+      s.on('uno:roster', (data: any) => {
+        this.emitLocal('uno:roster', data)
+      })
+
       s.on('game:celebration', (data: any) => {
         if (IS_DEV) this.log('game:celebration received', data)
         this.emitLocal('game:celebration', data)
@@ -238,6 +243,10 @@ class PokerSocket extends NamespacedSocket {
   endLobby(lobbyCode: string): Promise<ActionAck> {
     return this.emitAck<ActionAck>('endLobby', { lobbyCode }, 8000)
   }
+
+  leaveLobby(lobbyCode: string): Promise<ActionAck> {
+    return this.emitAck<ActionAck>('leaveLobby', { lobbyCode }, 8000)
+  }
 }
 
 export const pokerSocket = new PokerSocket()
@@ -288,6 +297,10 @@ class UnoSocket extends NamespacedSocket {
 
   endLobby(lobbyCode: string): Promise<ActionAck> {
     return this.emitAck<ActionAck>('endLobby', { lobbyCode }, 8000)
+  }
+
+  leaveLobby(lobbyCode: string): Promise<ActionAck> {
+    return this.emitAck<ActionAck>('leaveLobby', { lobbyCode }, 8000)
   }
 }
 
