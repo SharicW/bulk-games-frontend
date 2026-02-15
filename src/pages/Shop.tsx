@@ -94,6 +94,8 @@ function Shop() {
   }
 
   const inventory = new Set(user?.inventory ?? [])
+  const borders = items.filter(i => i.type === 'border')
+  const effects = items.filter(i => i.type === 'effect')
 
   return (
     <div className="page-shell">
@@ -151,53 +153,107 @@ function Shop() {
           <p className="muted">Loading items...</p>
         </div>
       ) : (
-        <div className="shop-grid">
-          {items.map(item => {
-            const owned = inventory.has(item.id)
-            const isEquipped = user?.equippedBorder === item.id || user?.equippedEffect === item.id
-            return (
-              <div key={item.id} className={`card shop-item ${owned ? 'shop-item--owned' : ''} ${isEquipped ? 'shop-item--equipped' : ''}`}>
-                <div className={`shop-item__preview ${item.cssClass}`}>
-                  <div className="shop-item__avatar-demo">
-                    {user?.avatarUrl ? (
-                      <img src={user.avatarUrl} alt="" />
-                    ) : (
-                      <span>👤</span>
-                    )}
+        <>
+          <div className="card" style={{ marginBottom: '16px' }}>
+            <h3 style={{ margin: '0 0 12px', fontSize: '16px', fontWeight: 600 }}>Borders</h3>
+            <div className="shop-grid">
+              {borders.map(item => {
+                const owned = inventory.has(item.id)
+                const isEquipped = user?.equippedBorder === item.id || user?.equippedEffect === item.id
+                return (
+                  <div key={item.id} className={`card shop-item ${owned ? 'shop-item--owned' : ''} ${isEquipped ? 'shop-item--equipped' : ''}`}>
+                    <div className={`shop-item__preview ${item.cssClass}`}>
+                      <div className="shop-item__avatar-demo">
+                        {user?.avatarUrl ? (
+                          <img src={user.avatarUrl} alt="" />
+                        ) : (
+                          <span>👤</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="shop-item__info">
+                      <span className="shop-item__name">{item.name}</span>
+                      <span className="shop-item__desc muted">{item.description}</span>
+                    </div>
+                    <div className="shop-item__actions">
+                      {!owned ? (
+                        <button
+                          className="btn-primary"
+                          style={{ padding: '8px 14px', fontSize: '13px' }}
+                          onClick={() => handleBuy(item.id)}
+                          disabled={busy === item.id || (user?.coins ?? 0) < item.price}
+                        >
+                          {busy === item.id ? 'Buying...' : `Buy — ${item.price} 🪙`}
+                        </button>
+                      ) : isEquipped ? (
+                        <span className="shop-item__badge shop-item__badge--equipped">Equipped</span>
+                      ) : (
+                        <button
+                          className="btn-secondary"
+                          style={{ padding: '8px 14px', fontSize: '13px' }}
+                          onClick={() => handleEquip(item.id)}
+                          disabled={busy === item.id}
+                        >
+                          {busy === item.id ? 'Equipping...' : 'Equip'}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div className="shop-item__info">
-                  <span className="shop-item__name">{item.name}</span>
-                  <span className="shop-item__type muted">{item.type === 'border' ? 'Border' : 'Effect'}</span>
-                  <span className="shop-item__desc muted">{item.description}</span>
-                </div>
-                <div className="shop-item__actions">
-                  {!owned ? (
-                    <button
-                      className="btn-primary"
-                      style={{ padding: '8px 14px', fontSize: '13px' }}
-                      onClick={() => handleBuy(item.id)}
-                      disabled={busy === item.id || (user?.coins ?? 0) < item.price}
-                    >
-                      {busy === item.id ? 'Buying...' : `Buy — ${item.price} 🪙`}
-                    </button>
-                  ) : isEquipped ? (
-                    <span className="shop-item__badge shop-item__badge--equipped">Equipped</span>
-                  ) : (
-                    <button
-                      className="btn-secondary"
-                      style={{ padding: '8px 14px', fontSize: '13px' }}
-                      onClick={() => handleEquip(item.id)}
-                      disabled={busy === item.id}
-                    >
-                      {busy === item.id ? 'Equipping...' : 'Equip'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="card">
+            <h3 style={{ margin: '0 0 12px', fontSize: '16px', fontWeight: 600 }}>Effects</h3>
+            <div className="shop-grid">
+              {effects.map(item => {
+                const owned = inventory.has(item.id)
+                const isEquipped = user?.equippedBorder === item.id || user?.equippedEffect === item.id
+                return (
+                  <div key={item.id} className={`card shop-item ${owned ? 'shop-item--owned' : ''} ${isEquipped ? 'shop-item--equipped' : ''}`}>
+                    <div className={`shop-item__preview ${item.cssClass}`}>
+                      <div className="shop-item__avatar-demo">
+                        {user?.avatarUrl ? (
+                          <img src={user.avatarUrl} alt="" />
+                        ) : (
+                          <span>👤</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="shop-item__info">
+                      <span className="shop-item__name">{item.name}</span>
+                      <span className="shop-item__desc muted">{item.description}</span>
+                    </div>
+                    <div className="shop-item__actions">
+                      {!owned ? (
+                        <button
+                          className="btn-primary"
+                          style={{ padding: '8px 14px', fontSize: '13px' }}
+                          onClick={() => handleBuy(item.id)}
+                          disabled={busy === item.id || (user?.coins ?? 0) < item.price}
+                        >
+                          {busy === item.id ? 'Buying...' : `Buy — ${item.price} 🪙`}
+                        </button>
+                      ) : isEquipped ? (
+                        <span className="shop-item__badge shop-item__badge--equipped">Equipped</span>
+                      ) : (
+                        <button
+                          className="btn-secondary"
+                          style={{ padding: '8px 14px', fontSize: '13px' }}
+                          onClick={() => handleEquip(item.id)}
+                          disabled={busy === item.id}
+                        >
+                          {busy === item.id ? 'Equipping...' : 'Equip'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </>
       )}
     </div>
   )
