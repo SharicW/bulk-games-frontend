@@ -376,6 +376,17 @@ function Uno() {
       applyState(next)
     })
 
+    const unsubscribeRoster = unoSocket.on('uno:roster', (payload) => {
+      const p = payload as any
+      setState(prev => {
+        if (!prev) return prev
+        if (prev.phase !== 'lobby') return prev
+        const v = Number(p?.version ?? prev.version)
+        const players = Array.isArray(p?.players) ? p.players : prev.players
+        return { ...prev, players, version: Math.max(prev.version ?? 0, v) }
+      })
+    })
+
     const unsubscribeCelebration = unoSocket.on('game:celebration', (payload) => {
       const p = payload as any
       const id = String(p?.id || '')
@@ -384,7 +395,7 @@ function Uno() {
       if (IS_DEV) console.log(`[uno:celebration] id=${id} effect=${effectId}`)
       setCelebration({ id, effectId })
       if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
-      celebrationTimerRef.current = window.setTimeout(() => setCelebration(null), 1600)
+      celebrationTimerRef.current = window.setTimeout(() => setCelebration(null), 2200)
     })
 
     const unsubscribeEnd = unoSocket.on('lobbyEnded', () => {
@@ -398,6 +409,7 @@ function Uno() {
     return () => {
       stopped = true
       unsubscribeState()
+      unsubscribeRoster()
       unsubscribeCelebration()
       unsubscribeEnd()
       unsubscribeConnect()
@@ -432,6 +444,15 @@ function Uno() {
       setError(result.error || result.reason || 'Failed to end lobby')
       setTimeout(() => setError(null), 3000)
     }
+  }, [state])
+
+  const handleLeaveLobby = useCallback(async () => {
+    if (!state) {
+      window.location.href = '/main-menu'
+      return
+    }
+    try { await unoSocket.leaveLobby(state.lobbyCode) } catch { /* ignore */ }
+    window.location.href = '/main-menu'
   }, [state])
 
   const onCardClick = (c: UnoCard) => {
@@ -523,9 +544,13 @@ function Uno() {
           <span className="uno-header__meta">Direction: {dirLabel}</span>
         </div>
 
-        {isHost && (
-          <div className="uno-header__controls">
-            {state.phase === 'lobby' && state.players.length >= 2 && (isHost || isPublic) && (
+        <div className="uno-header__controls">
+          <button className="btn-secondary" onClick={handleLeaveLobby} style={{ width: 'auto', padding: '8px 16px' }}>
+            Leave Lobby
+          </button>
+          {isHost && (
+            <>
+            {state.phase !== 'playing' && (
               <button className="btn-primary" onClick={handleStartGame} style={{ width: 'auto', padding: '8px 16px' }}>
                 Start Game
               </button>
@@ -535,9 +560,10 @@ function Uno() {
                 End Lobby
               </button>
             )}
-          </div>
-        )}
-        {!isHost && isPublic && state.phase === 'lobby' && state.players.length >= 2 && (
+            </>
+          )}
+        </div>
+        {!isHost && isPublic && state.phase !== 'playing' && (
           <div className="uno-header__controls">
             <button className="btn-primary" onClick={handleStartGame} style={{ width: 'auto', padding: '8px 16px' }}>
               Start Game
@@ -722,6 +748,11 @@ function Uno() {
             <h2>Game Over</h2>
             <p className="muted">{winner ? `${winner.nickname} wins!` : 'Winner decided.'}</p>
             <div className="uno-end-actions">
+              {(isHost || isPublic) && (
+                <button className="btn-primary" onClick={handleStartGame}>
+                  Start Next Game
+                </button>
+              )}
               <button className="btn-secondary" onClick={() => (window.location.href = '/main-menu')}>
                 Back to Main Menu
               </button>
