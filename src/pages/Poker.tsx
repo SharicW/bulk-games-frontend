@@ -476,7 +476,7 @@ function Poker() {
       if (IS_DEV) console.log(`[poker:celebration] id=${id} effect=${effectId}`)
       setCelebration({ id, effectId })
       if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
-      celebrationTimerRef.current = window.setTimeout(() => setCelebration(null), 1600)
+      celebrationTimerRef.current = window.setTimeout(() => setCelebration(null), 2200)
     })
     
     const unsubscribeEnd = pokerSocket.on('lobbyEnded', () => {
@@ -574,6 +574,15 @@ function Poker() {
       setError(result.error || result.reason || 'Failed to end lobby')
       setTimeout(() => setError(null), 3000)
     }
+  }, [gameState])
+
+  const handleLeaveLobby = useCallback(async () => {
+    if (!gameState) {
+      window.location.href = '/main-menu'
+      return
+    }
+    try { await pokerSocket.leaveLobby(gameState.lobbyCode) } catch { /* ignore */ }
+    window.location.href = '/main-menu'
   }, [gameState])
   
   const isHost = gameState?.hostId === user?.id
@@ -698,9 +707,13 @@ function Poker() {
           </div>
         )}
         
-        {isHost && (
-          <div className="poker-header__controls">
-            {(!gameState.gameStarted && gameState.players.length >= 2 && (isHost || isPublic)) && (
+        <div className="poker-header__controls">
+          <button className="btn-secondary" onClick={handleLeaveLobby}>
+            Leave Lobby
+          </button>
+          {isHost && (
+            <>
+            {(!gameState.gameStarted) && (
               <button className="btn-primary" onClick={handleStartGame}>
                 Start Game
               </button>
@@ -710,9 +723,10 @@ function Poker() {
                 End Lobby
               </button>
             )}
-          </div>
-        )}
-        {!isHost && isPublic && !gameState.gameStarted && gameState.players.length >= 2 && (
+            </>
+          )}
+        </div>
+        {!isHost && isPublic && !gameState.gameStarted && (
           <div className="poker-header__controls">
             <button className="btn-primary" onClick={handleStartGame}>
               Start Game
