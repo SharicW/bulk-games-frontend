@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 
 type CelebrationEffectId = 'stars' | 'red_hearts' | 'black_hearts'
 
-const COUNT = 18
+const COUNT = 20
 const STAR_COLORS = ['#ffd700', '#ffec8b', '#fff8dc', '#fffacd', '#f0e68c', '#ffa500', '#fff']
 const REDS = ['#ff3b3b', '#ff5a5a', '#ff7a7a', '#ff2d55', '#ff453a']
 
@@ -23,9 +23,9 @@ export default function WinCelebration({ show, effectId = 'stars' }: { show: boo
         y: 12 + Math.random() * 70,
         size: 14 + Math.random() * 18,
         color: conf.color(i),
-        delay: Math.random() * 0.35,
-        dx: (Math.random() - 0.5) * 190,
-        dy: -(45 + Math.random() * 130),
+        delay: Math.random() * 0.55,
+        dx: (Math.random() - 0.5) * 210,
+        dy: -(60 + Math.random() * 170),
         rotate: Math.random() * 540 - 270,
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,7 +60,7 @@ export default function WinCelebration({ show, effectId = 'stars' }: { show: boo
                 opacity: [0, 1, 1, 0],
               }}
               transition={{
-                duration: 1.5,
+                duration: 2.0,
                 delay: s.delay,
                 ease: 'easeOut',
               }}
