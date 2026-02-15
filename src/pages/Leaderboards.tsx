@@ -146,8 +146,8 @@ function Leaderboards() {
                 gap: '12px',
                 padding: '10px 12px',
                 borderRadius: '10px',
-                background: 'rgba(15, 23, 42, 0.55)',
-                border: '1px solid rgba(148,163,184,0.12)',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--color-border)',
               }}>
                 <div style={{ fontWeight: 800 }}>#{r.rank}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
@@ -180,8 +180,8 @@ function Leaderboards() {
             gap: '12px',
             padding: '10px 12px',
             borderRadius: '10px',
-            background: 'rgba(15, 23, 42, 0.55)',
-            border: '1px solid rgba(148,163,184,0.12)',
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid var(--color-border)',
           }}>
             <div style={{ fontWeight: 800 }}>#{me.rank}</div>
             <div style={{ fontWeight: 650 }}>{me.nickname}</div>
