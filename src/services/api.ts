@@ -149,3 +149,26 @@ export async function apiListPublicRooms(gameType?: 'poker' | 'uno'): Promise<{ 
   return request(`/public/rooms${qs}`, { method: 'GET' });
 }
 
+/* ── Leaderboard ──────────────────────────────────────────────── */
+
+export type LeaderboardBy = 'coins' | 'wins';
+
+export interface LeaderboardRow {
+  rank: number;
+  userId: string;
+  nickname: string;
+  avatarUrl: string | null;
+  coins: number;
+  wins: number;
+}
+
+export async function apiGetLeaderboard(by: LeaderboardBy, limit = 10): Promise<{ by: LeaderboardBy; limit: number; rows: LeaderboardRow[] }> {
+  const qs = `?by=${encodeURIComponent(by)}&limit=${encodeURIComponent(String(limit))}`;
+  return request(`/leaderboard${qs}`, { method: 'GET' });
+}
+
+export async function apiGetMyRank(by: LeaderboardBy): Promise<{ by: LeaderboardBy; me: LeaderboardRow }> {
+  const qs = `?by=${encodeURIComponent(by)}`;
+  return request(`/leaderboard/me${qs}`, { method: 'GET' });
+}
+
