@@ -51,6 +51,20 @@ function Sidebar() {
                 </svg>
                 <span className="sidebar__text">Shop</span>
               </NavLink>
+              <NavLink
+                to="/leaderboards"
+                className={({ isActive }) =>
+                  `sidebar__link${isActive ? ' is-active' : ''}`
+                }
+              >
+                <svg className="sidebar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M8 21h8" />
+                  <path d="M12 17V5" />
+                  <path d="M7 8l5-3 5 3" />
+                  <path d="M8 17h8" />
+                </svg>
+                <span className="sidebar__text">Leaderboards</span>
+              </NavLink>
             </div>
           </div>
 
