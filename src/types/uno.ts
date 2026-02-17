@@ -56,14 +56,25 @@ export interface UnoPrompt {
   createdAt: number;
 }
 
+export interface UnoSpectator {
+  playerId: string;
+  nickname: string;
+  avatarUrl: string | null;
+  isConnected: boolean;
+  equippedBorder: string | null;
+  equippedEffect: string | null;
+}
+
 export interface UnoClientState {
   gameType: 'uno';
   lobbyCode: string;
   hostId: string;
   players: UnoClientPlayer[];
+  spectators?: UnoSpectator[];
+  isSpectator?: boolean;
   isPublic?: boolean;
   maxPlayers?: number;
-  celebration?: null | { id: string; winnerId: string; effectId: 'stars' | 'red_hearts' | 'black_hearts'; createdAt?: number };
+  celebration?: null | { id: string; winnerId: string; effectId: 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'sakura_petals'; createdAt?: number };
 
   phase: UnoPhase;
   gameStarted: boolean;
