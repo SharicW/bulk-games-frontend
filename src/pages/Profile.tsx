@@ -8,12 +8,19 @@ const BORDER_MAP: Record<string, string> = {
   border_rainbow: 'cosmetic-border--rainbow',
   border_neon: 'cosmetic-border--neon',
   border_fire: 'cosmetic-border--fire',
+  border_ice: 'cosmetic-border--ice',
+  border_emerald: 'cosmetic-border--emerald',
+  border_purple: 'cosmetic-border--purple',
 }
 const EFFECT_MAP: Record<string, string> = {
   effect_glow: 'cosmetic-effect--glow',
   effect_sparkle: 'cosmetic-effect--sparkle',
   effect_shadow: 'cosmetic-effect--shadow',
   effect_pulse: 'cosmetic-effect--pulse',
+  effect_red_hearts: 'cosmetic-effect--hearts-red',
+  effect_black_hearts: 'cosmetic-effect--hearts-black',
+  effect_fire_burst: 'cosmetic-effect--fire-burst',
+  effect_sakura_petals: 'cosmetic-effect--sakura-petals',
 }
 function buildCosmeticClasses(border: string | null | undefined, effect: string | null | undefined): string {
   const classes: string[] = []
