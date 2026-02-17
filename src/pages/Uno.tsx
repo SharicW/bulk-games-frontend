@@ -14,12 +14,19 @@ const BORDER_MAP: Record<string, string> = {
   border_rainbow: 'cosmetic-border--rainbow',
   border_neon: 'cosmetic-border--neon',
   border_fire: 'cosmetic-border--fire',
+  border_ice: 'cosmetic-border--ice',
+  border_emerald: 'cosmetic-border--emerald',
+  border_purple: 'cosmetic-border--purple',
 }
 const EFFECT_MAP: Record<string, string> = {
   effect_glow: 'cosmetic-effect--glow',
   effect_sparkle: 'cosmetic-effect--sparkle',
   effect_shadow: 'cosmetic-effect--shadow',
   effect_pulse: 'cosmetic-effect--pulse',
+  effect_red_hearts: 'cosmetic-effect--hearts-red',
+  effect_black_hearts: 'cosmetic-effect--hearts-black',
+  effect_fire_burst: 'cosmetic-effect--fire-burst',
+  effect_sakura_petals: 'cosmetic-effect--sakura-petals',
 }
 function buildCosmeticClasses(border: string | null | undefined, effect: string | null | undefined): string {
   const classes: string[] = []
@@ -229,11 +236,9 @@ const UnoCardImg = memo(function UnoCardImg({ card, images, className, dimmed, g
       onClick={onClick}
       disabled={!onClick}
       title={cardLabel(card.face)}
-      initial={{ opacity: 0, scale: 0.85, y: 12 }}
-      animate={{ opacity: dimmed ? 0.45 : 1, scale: 1, y: 0 }}
-      whileHover={onClick ? { scale: 1.18, y: -22 } : undefined}
+      initial={{ opacity: 0, scale: 0.85 }}
+      animate={{ opacity: dimmed ? 0.45 : 1, scale: 1 }}
       transition={{ duration: 0.35, ease: 'easeOut' }}
-      style={{ transformOrigin: 'center bottom' }}
     >
       {src ? (
         <img src={src} alt={cardLabel(card.face)} decoding="async" loading="eager" />
@@ -243,6 +248,33 @@ const UnoCardImg = memo(function UnoCardImg({ card, images, className, dimmed, g
         </div>
       )}
     </motion.button>
+  )
+})
+
+/** Card that "flies" from the hand to the discard pile */
+const FlyingCard = memo(function FlyingCard({ card, images, fromRect, discardRef, onComplete }: {
+  card: UnoCard
+  images: Record<string, string[]>
+  fromRect: DOMRect
+  discardRef: React.RefObject<HTMLDivElement | null>
+  onComplete: () => void
+}) {
+  const fId = faceId(card.face)
+  const variants = images[fId] || []
+  const src = variants.length ? variants[Math.abs(hashStr(card.id)) % variants.length] : null
+  const targetRect = discardRef.current?.getBoundingClientRect()
+  const toX = targetRect ? targetRect.left + targetRect.width / 2 - 43 : window.innerWidth / 2 - 43
+  const toY = targetRect ? targetRect.top + targetRect.height / 2 - 62 : window.innerHeight * 0.38
+  return (
+    <motion.div
+      className="uno-flying-card"
+      initial={{ x: fromRect.left + fromRect.width / 2 - 43, y: fromRect.top + fromRect.height / 2 - 62, scale: 1.12, rotate: 0, opacity: 1 }}
+      animate={{ x: toX, y: toY, scale: 1, rotate: (Math.random() - 0.5) * 14, opacity: 1 }}
+      transition={{ duration: 0.34, ease: [0.22, 0.68, 0.35, 1] }}
+      onAnimationComplete={onComplete}
+    >
+      {src ? <img src={src} alt="" draggable={false} /> : <div className="uno-card__fallback">{cardLabel(card.face)}</div>}
+    </motion.div>
   )
 })
 
@@ -260,8 +292,13 @@ function Uno() {
   const [pendingWildCardId, setPendingWildCardId] = useState<string | null>(null)
 
   // ── Celebration (server-driven; visible to everyone) ───────────
-  const [celebration, setCelebration] = useState<null | { id: string; effectId: 'stars' | 'red_hearts' | 'black_hearts' }>(null)
+  const [celebration, setCelebration] = useState<null | { id: string; effectId: 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'sakura_petals' }>(null)
   const celebrationTimerRef = useRef<number | null>(null)
+
+  // ── Flying card animation state ─────────────────────────────────
+  const [flyingCard, setFlyingCard] = useState<{ card: UnoCard; fromRect: DOMRect } | null>(null)
+  const [showImpact, setShowImpact] = useState(false)
+  const discardRef = useRef<HTMLDivElement>(null)
 
   const images = useMemo(() => buildUnoImages(), [])
 
@@ -311,6 +348,8 @@ function Uno() {
   const isHost = state?.hostId === uid
   const isPublic = !!state?.isPublic
   const me = state?.players.find(p => p.playerId === uid) || null
+  const isSpectator = !!state?.isSpectator
+  const spectatorCount = state?.spectators?.length ?? 0
   const myHand = state?.hands?.[uid] || []
   const topCard = state?.discardPile?.length ? state.discardPile[state.discardPile.length - 1] : null
 
@@ -390,12 +429,12 @@ function Uno() {
     const unsubscribeCelebration = unoSocket.on('game:celebration', (payload) => {
       const p = payload as any
       const id = String(p?.id || '')
-      const effectId = (p?.effectId || 'stars') as 'stars' | 'red_hearts' | 'black_hearts'
+      const effectId = (p?.effectId || 'stars') as 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'sakura_petals'
       if (!id) return
       if (IS_DEV) console.log(`[uno:celebration] id=${id} effect=${effectId}`)
       setCelebration({ id, effectId })
       if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
-      celebrationTimerRef.current = window.setTimeout(() => setCelebration(null), 2200)
+      celebrationTimerRef.current = window.setTimeout(() => setCelebration(null), 4000)
     })
 
     const unsubscribeEnd = unoSocket.on('lobbyEnded', () => {
@@ -463,6 +502,10 @@ function Uno() {
       setColorModalOpen(true)
       return
     }
+    // Capture card position for flying animation
+    const cardEl = document.querySelector(`[data-card-id="${c.id}"]`)
+    const fromRect = cardEl?.getBoundingClientRect()
+    if (fromRect) setFlyingCard({ card: c, fromRect })
     sendAction({ type: 'play', cardId: c.id })
   }
 
@@ -542,6 +585,8 @@ function Uno() {
           <span className="uno-header__phase">{phaseLabel}</span>
           <span className="uno-header__meta">Color: {colorLabel}</span>
           <span className="uno-header__meta">Direction: {dirLabel}</span>
+          {spectatorCount > 0 && <span className="uno-header__meta">👁 {spectatorCount} spectating</span>}
+          {isSpectator && <span className="uno-header__spectator-badge">Spectating</span>}
         </div>
 
         <div className="uno-header__controls">
@@ -588,7 +633,7 @@ function Uno() {
                   <div className="uno-deck__count">{state.drawPileCount}</div>
                 </div>
 
-                <div className="uno-discard" aria-label="Discard pile">
+                <div className="uno-discard" ref={discardRef} aria-label="Discard pile">
                   {topCard ? (
                     <UnoCardImg
                       key={topCard.id}
@@ -598,6 +643,14 @@ function Uno() {
                     />
                   ) : (
                     <div className="uno-discard__empty" />
+                  )}
+                  {showImpact && (
+                    <motion.div
+                      className="uno-discard__impact"
+                      initial={{ scale: 0.6, opacity: 0.7 }}
+                      animate={{ scale: 1.5, opacity: 0 }}
+                      transition={{ duration: 0.25, ease: 'easeOut' }}
+                    />
                   )}
                 </div>
               </div>
@@ -665,6 +718,19 @@ function Uno() {
 
       {state.phase === 'playing' && (
         <div className="uno-bottom-bar">
+          {isSpectator ? (
+            <div className="uno-actions">
+              <div className="uno-actions__status">
+                <span className="uno-actions__turn">👁 Spectating</span>
+                <span className="muted">{currentPlayer?.nickname || 'Player'}'s turn</span>
+              </div>
+              <div className="uno-actions__buttons">
+                <button className="btn-secondary uno-actions__btn" onClick={() => (window.location.href = '/main-menu')}>
+                  Back to Main Menu
+                </button>
+              </div>
+            </div>
+          ) : (
           <div className="uno-actions">
             <div className="uno-actions__status">
               {isMyTurn ? (
@@ -709,24 +775,31 @@ function Uno() {
               </button>
             </div>
           </div>
+          )}
 
-          <div className="uno-hand" aria-label="Your hand">
+          {!isSpectator && <div className="uno-hand" aria-label="Your hand">
             <div className="uno-hand__fan">
               {myHand.map((c, i) => {
                 const n = myHand.length
-                const spread = clamp(n, 1, 14)
+                const gap = n <= 5 ? 44 : n <= 9 ? 34 : 26
+                const rotStep = n <= 5 ? 7 : n <= 9 ? 4.5 : 3
                 const center = (n - 1) / 2
-                const offset = (i - center)
-                const rot = offset * (spread <= 6 ? 6 : 4)
-                const x = offset * (spread <= 6 ? 36 : 28)
-                const y = Math.abs(offset) * 2
-                const wrapperStyle: React.CSSProperties = {
-                  transform: `translateX(${x}px) translateY(${y}px) rotate(${rot}deg)`,
-                }
+                const offset = i - center
+                const rot = offset * rotStep
+                const xVal = offset * gap
+                const yVal = Math.abs(offset) * 2.5
                 const canClick = isMyTurn && playable.has(c.id)
                 const dim = isMyTurn && !playable.has(c.id)
                 return (
-                  <div key={c.id} className="uno-hand__card" style={wrapperStyle}>
+                  <motion.div
+                    key={c.id}
+                    className="uno-hand__card"
+                    data-card-id={c.id}
+                    style={{ x: xVal, rotate: rot, transformOrigin: 'center bottom' }}
+                    animate={{ y: yVal, zIndex: 1, scale: 1 }}
+                    whileHover={canClick ? { y: yVal - 26, scale: 1.15, zIndex: 50 } : undefined}
+                    transition={{ duration: 0.18, ease: 'easeOut' }}
+                  >
                     <UnoCardImg
                       card={c}
                       images={images}
@@ -734,11 +807,11 @@ function Uno() {
                       dimmed={dim}
                       onClick={canClick ? () => onCardClick(c) : undefined}
                     />
-                  </div>
+                  </motion.div>
                 )
               })}
             </div>
-          </div>
+          </div>}
         </div>
       )}
 
@@ -812,6 +885,20 @@ function Uno() {
           <button className="btn-secondary" onClick={() => chooseWildColor('yellow')}>Yellow</button>
         </div>
       </Modal>
+
+      {flyingCard && (
+        <FlyingCard
+          card={flyingCard.card}
+          images={images}
+          fromRect={flyingCard.fromRect}
+          discardRef={discardRef}
+          onComplete={() => {
+            setFlyingCard(null)
+            setShowImpact(true)
+            setTimeout(() => setShowImpact(false), 280)
+          }}
+        />
+      )}
     </div>
   )
 }
