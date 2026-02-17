@@ -18,12 +18,19 @@ const BORDER_MAP: Record<string, string> = {
   border_rainbow: 'cosmetic-border--rainbow',
   border_neon: 'cosmetic-border--neon',
   border_fire: 'cosmetic-border--fire',
+  border_ice: 'cosmetic-border--ice',
+  border_emerald: 'cosmetic-border--emerald',
+  border_purple: 'cosmetic-border--purple',
 }
 const EFFECT_MAP: Record<string, string> = {
   effect_glow: 'cosmetic-effect--glow',
   effect_sparkle: 'cosmetic-effect--sparkle',
   effect_shadow: 'cosmetic-effect--shadow',
   effect_pulse: 'cosmetic-effect--pulse',
+  effect_red_hearts: 'cosmetic-effect--hearts-red',
+  effect_black_hearts: 'cosmetic-effect--hearts-black',
+  effect_fire_burst: 'cosmetic-effect--fire-burst',
+  effect_sakura_petals: 'cosmetic-effect--sakura-petals',
 }
 function buildCosmeticClasses(border: string | null | undefined, effect: string | null | undefined): string {
   const classes: string[] = []
@@ -354,7 +361,7 @@ function Poker() {
   const [maxTime, setMaxTime] = useState(30)
 
   // ── Celebration (server-driven; visible to everyone) ───────────
-  const [celebration, setCelebration] = useState<null | { id: string; effectId: 'stars' | 'red_hearts' | 'black_hearts' }>(null)
+  const [celebration, setCelebration] = useState<null | { id: string; effectId: 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'sakura_petals' }>(null)
   const celebrationTimerRef = useRef<number | null>(null)
   
   const timerRef = useRef<number | null>(null)
@@ -471,12 +478,12 @@ function Poker() {
     const unsubscribeCelebration = pokerSocket.on('game:celebration', (payload) => {
       const p = payload as any
       const id = String(p?.id || '')
-      const effectId = (p?.effectId || 'stars') as 'stars' | 'red_hearts' | 'black_hearts'
+      const effectId = (p?.effectId || 'stars') as 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'sakura_petals'
       if (!id) return
       if (IS_DEV) console.log(`[poker:celebration] id=${id} effect=${effectId}`)
       setCelebration({ id, effectId })
       if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
-      celebrationTimerRef.current = window.setTimeout(() => setCelebration(null), 2200)
+      celebrationTimerRef.current = window.setTimeout(() => setCelebration(null), 4000)
     })
     
     const unsubscribeEnd = pokerSocket.on('lobbyEnded', () => {
@@ -587,6 +594,8 @@ function Poker() {
   
   const isHost = gameState?.hostId === user?.id
   const isPublic = !!gameState?.isPublic
+  const isSpectator = !!gameState?.isSpectator
+  const spectatorCount = gameState?.spectators?.length ?? 0
 
   // ── Best hand evaluation (state-tracked: only upgrade, never downgrade) ──
   // Hooks MUST be above early returns to satisfy Rules of Hooks.
@@ -691,6 +700,8 @@ function Poker() {
           <span className="poker-header__code">Lobby: {gameState.lobbyCode}</span>
           <span className="poker-header__hand">Hand #{gameState.handNumber}</span>
           <span className="poker-header__street">{gameState.street.toUpperCase()}</span>
+          {spectatorCount > 0 && <span className="poker-header__meta">👁 {spectatorCount}</span>}
+          {isSpectator && <span className="poker-header__spectator-badge">Spectating</span>}
         </div>
         
         {gameState.gameStarted && <HandGuide />}
@@ -867,7 +878,13 @@ function Poker() {
           <AnimatePresence>
             {kickerCards.length > 0 && <KickerPill cards={kickerCards} />}
           </AnimatePresence>
-          <ActionPanel gameState={gameState} onAction={handleAction} />
+          {isSpectator ? (
+            <div className="poker-actions poker-actions--waiting">
+              <span className="poker-actions__status">👁 Spectating</span>
+            </div>
+          ) : (
+            <ActionPanel gameState={gameState} onAction={handleAction} />
+          )}
         </div>
       )}
       
