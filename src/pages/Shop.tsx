@@ -2,6 +2,47 @@ import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { apiGetShopItems, apiBuyItem, apiEquipItem, type ShopItem } from '../services/api'
 
+/** Tiny animated preview for win-celebration effects shown in Shop cards */
+function EffectPreview({ effectId }: { effectId: string }) {
+  if (effectId === 'effect_red_hearts') {
+    return (
+      <div className="effect-preview effect-preview--hearts-red">
+        {[0, 1, 2, 3, 4].map(i => (
+          <span key={i} className="effect-preview__particle" style={{ animationDelay: `${i * 0.22}s` }}>♥</span>
+        ))}
+      </div>
+    )
+  }
+  if (effectId === 'effect_black_hearts') {
+    return (
+      <div className="effect-preview effect-preview--hearts-black">
+        {[0, 1, 2, 3, 4].map(i => (
+          <span key={i} className="effect-preview__particle" style={{ animationDelay: `${i * 0.22}s` }}>♥</span>
+        ))}
+      </div>
+    )
+  }
+  if (effectId === 'effect_fire_burst') {
+    return (
+      <div className="effect-preview effect-preview--fire">
+        {[0, 1, 2, 3, 4, 5].map(i => (
+          <span key={i} className="effect-preview__dot" style={{ animationDelay: `${i * 0.18}s` }} />
+        ))}
+      </div>
+    )
+  }
+  if (effectId === 'effect_sakura_petals') {
+    return (
+      <div className="effect-preview effect-preview--sakura">
+        {[0, 1, 2, 3, 4].map(i => (
+          <span key={i} className="effect-preview__particle" style={{ animationDelay: `${i * 0.25}s` }}>❀</span>
+        ))}
+      </div>
+    )
+  }
+  return null
+}
+
 function Shop() {
   const { isLoggedIn, user, loading, refreshUser } = useAuth()
   const [items, setItems] = useState<ShopItem[]>([])
@@ -220,6 +261,7 @@ function Shop() {
                           <span>👤</span>
                         )}
                       </div>
+                      <EffectPreview effectId={item.id} />
                     </div>
                     <div className="shop-item__info">
                       <span className="shop-item__name">{item.name}</span>
