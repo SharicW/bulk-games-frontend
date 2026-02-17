@@ -55,6 +55,16 @@
   color: var(--color-text-muted);
 }
 
+.uno-header__spectator-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(255, 165, 0, 0.55);
+  padding: 2px 10px;
+  border-radius: 10px;
+}
+
 .uno-header__controls {
   display: flex;
   gap: 8px;
@@ -489,7 +499,6 @@
 
 .uno-card--glow {
   box-shadow: 0 0 0 2px rgba(255,255,255,0.45), 0 10px 24px rgba(0,0,0,0.38);
-  transform: translateY(-4px);
 }
 
 .uno-card:active:not(:disabled) {
@@ -666,13 +675,36 @@
   color: #fff !important;
 }
 
-/* ── UNO card hover enhancement (z-index for overlap) ────────── */
-.uno-hand__card {
-  z-index: 1;
-  transition: z-index 0s;
+/* z-index for hand cards is handled by Framer Motion */
+
+/* ── Flying card (plays from hand to discard) ────────────────── */
+.uno-flying-card {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 86px;
+  height: 124px;
+  z-index: 9999;
+  pointer-events: none;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.5);
 }
 
-.uno-hand__card:hover {
-  z-index: 20;
+.uno-flying-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* ── Impact ring on discard pile ─────────────────────────────── */
+.uno-discard__impact {
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, transparent 70%);
+  pointer-events: none;
 }
 
