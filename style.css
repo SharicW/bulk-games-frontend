@@ -2261,6 +2261,21 @@ hr.divider {
   font-weight: 600;
 }
 
+.poker-header__meta {
+  font-size: clamp(11px, 1.3vw, 13px);
+  color: var(--color-text-muted);
+}
+
+.poker-header__spectator-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(255, 165, 0, 0.55);
+  padding: 2px 10px;
+  border-radius: 10px;
+}
+
 .poker-header__controls {
   display: flex;
   gap: 8px;
@@ -3274,10 +3289,10 @@ hr.divider {
    ══════════════════════════════════════════════════════════════════ */
 
 .win-celebration-overlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 50;
+  z-index: 1500;
   overflow: visible;
   background: transparent;
 }
@@ -3532,4 +3547,143 @@ hr.divider {
 .cosmetic-effect--hearts-black .uno-seat__avatar,
 .cosmetic-effect--hearts-black .profile-avatar__preview {
   filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.55));
+}
+
+/* ── New borders: Ice / Emerald / Purple ──────────────────────── */
+
+.cosmetic-border--ice .shop-item__avatar-demo,
+.cosmetic-border--ice .poker-seat__avatar,
+.cosmetic-border--ice .uno-seat__avatar,
+.cosmetic-border--ice .profile-avatar__preview {
+  border: 3px solid #7fdbff;
+  box-shadow: 0 0 10px rgba(127, 219, 255, 0.45), inset 0 0 4px rgba(127, 219, 255, 0.12);
+}
+
+.cosmetic-border--emerald .shop-item__avatar-demo,
+.cosmetic-border--emerald .poker-seat__avatar,
+.cosmetic-border--emerald .uno-seat__avatar,
+.cosmetic-border--emerald .profile-avatar__preview {
+  border: 3px solid #2ecc71;
+  box-shadow: 0 0 10px rgba(46, 204, 113, 0.45), 0 0 20px rgba(46, 204, 113, 0.15);
+}
+
+.cosmetic-border--purple .shop-item__avatar-demo,
+.cosmetic-border--purple .poker-seat__avatar,
+.cosmetic-border--purple .uno-seat__avatar,
+.cosmetic-border--purple .profile-avatar__preview {
+  border: 3px solid #a855f7;
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.45), 0 0 22px rgba(168, 85, 247, 0.18);
+}
+
+/* ── New win-effect avatar hints: Fire Burst / Sakura Petals ── */
+
+.cosmetic-effect--fire-burst .shop-item__avatar-demo,
+.cosmetic-effect--fire-burst .poker-seat__avatar,
+.cosmetic-effect--fire-burst .uno-seat__avatar,
+.cosmetic-effect--fire-burst .profile-avatar__preview {
+  filter: drop-shadow(0 0 8px rgba(255, 69, 0, 0.5));
+}
+
+.cosmetic-effect--sakura-petals .shop-item__avatar-demo,
+.cosmetic-effect--sakura-petals .poker-seat__avatar,
+.cosmetic-effect--sakura-petals .uno-seat__avatar,
+.cosmetic-effect--sakura-petals .profile-avatar__preview {
+  filter: drop-shadow(0 0 8px rgba(255, 182, 213, 0.5));
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Shop effect previews (animated mini-icons beside avatar demo)
+   ══════════════════════════════════════════════════════════════════ */
+
+.effect-preview {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.shop-item__preview {
+  position: relative;
+}
+
+/* ── Hearts (red & black) ─── */
+.effect-preview--hearts-red .effect-preview__particle,
+.effect-preview--hearts-black .effect-preview__particle {
+  position: absolute;
+  font-size: 12px;
+  animation: effectPreviewFloat 1.8s ease-in-out infinite;
+}
+
+.effect-preview--hearts-red .effect-preview__particle {
+  color: #ff3b3b;
+  text-shadow: 0 0 4px rgba(255,59,59,0.5);
+}
+.effect-preview--hearts-red .effect-preview__particle:nth-child(1) { left: 10%; top: 60%; }
+.effect-preview--hearts-red .effect-preview__particle:nth-child(2) { left: 75%; top: 55%; }
+.effect-preview--hearts-red .effect-preview__particle:nth-child(3) { left: 42%; top: 70%; }
+.effect-preview--hearts-red .effect-preview__particle:nth-child(4) { left: 22%; top: 40%; }
+.effect-preview--hearts-red .effect-preview__particle:nth-child(5) { left: 65%; top: 35%; }
+
+.effect-preview--hearts-black .effect-preview__particle {
+  color: #222;
+  text-shadow: 0 0 4px rgba(0,0,0,0.5);
+}
+.effect-preview--hearts-black .effect-preview__particle:nth-child(1) { left: 10%; top: 60%; }
+.effect-preview--hearts-black .effect-preview__particle:nth-child(2) { left: 75%; top: 55%; }
+.effect-preview--hearts-black .effect-preview__particle:nth-child(3) { left: 42%; top: 70%; }
+.effect-preview--hearts-black .effect-preview__particle:nth-child(4) { left: 22%; top: 40%; }
+.effect-preview--hearts-black .effect-preview__particle:nth-child(5) { left: 65%; top: 35%; }
+
+/* ── Fire dots ─── */
+.effect-preview--fire .effect-preview__dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #fff, #ff6a00 55%, rgba(0,0,0,0) 72%);
+  box-shadow: 0 0 6px rgba(255,106,0,0.7);
+  animation: effectPreviewFire 1.6s ease-out infinite;
+}
+.effect-preview--fire .effect-preview__dot:nth-child(1) { left: 15%; top: 65%; }
+.effect-preview--fire .effect-preview__dot:nth-child(2) { left: 70%; top: 60%; }
+.effect-preview--fire .effect-preview__dot:nth-child(3) { left: 40%; top: 72%; }
+.effect-preview--fire .effect-preview__dot:nth-child(4) { left: 55%; top: 50%; }
+.effect-preview--fire .effect-preview__dot:nth-child(5) { left: 28%; top: 45%; }
+.effect-preview--fire .effect-preview__dot:nth-child(6) { left: 80%; top: 42%; }
+
+/* ── Sakura petals ─── */
+.effect-preview--sakura .effect-preview__particle {
+  position: absolute;
+  font-size: 11px;
+  color: #ffb6d5;
+  text-shadow: 0 0 4px rgba(255,182,213,0.5);
+  animation: effectPreviewSakura 2.2s ease-in-out infinite;
+}
+.effect-preview--sakura .effect-preview__particle:nth-child(1) { left: 12%; top: 10%; }
+.effect-preview--sakura .effect-preview__particle:nth-child(2) { left: 65%; top: 5%; }
+.effect-preview--sakura .effect-preview__particle:nth-child(3) { left: 38%; top: 15%; }
+.effect-preview--sakura .effect-preview__particle:nth-child(4) { left: 80%; top: 20%; }
+.effect-preview--sakura .effect-preview__particle:nth-child(5) { left: 50%; top: 8%; }
+
+@keyframes effectPreviewFloat {
+  0%   { transform: translateY(0) scale(1);   opacity: 0; }
+  15%  { opacity: 1; }
+  50%  { transform: translateY(-14px) scale(1.15); opacity: 1; }
+  85%  { opacity: 0.4; }
+  100% { transform: translateY(-24px) scale(0.7); opacity: 0; }
+}
+
+@keyframes effectPreviewFire {
+  0%   { transform: translateY(0) scale(0.6); opacity: 0; }
+  20%  { opacity: 1; }
+  60%  { transform: translateY(-18px) scale(1.1); opacity: 0.8; }
+  100% { transform: translateY(-30px) scale(0.3); opacity: 0; }
+}
+
+@keyframes effectPreviewSakura {
+  0%   { transform: translate(0, 0) rotate(0deg) scale(0.8); opacity: 0; }
+  15%  { opacity: 1; }
+  50%  { transform: translate(6px, 20px) rotate(45deg) scale(1); opacity: 0.9; }
+  100% { transform: translate(10px, 40px) rotate(90deg) scale(0.6); opacity: 0; }
 }
