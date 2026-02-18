@@ -311,6 +311,14 @@ function Uno() {
   const lastVersionRef = useRef<number>(0)
   const resyncingRef = useRef(false)
 
+  // ── Action in-flight lock ──────────────────────────────────────
+  // Prevents multiple concurrent playerAction emits (avoids spam + duplicate timeouts).
+  const actionPendingRef = useRef(false)
+  const [actionPending, setActionPending] = useState(false)
+
+  // ── UNO / Catch button de-bounce ───────────────────────────────
+  const unoCallPendingRef = useRef(false)
+
   // ── SFX: previous state ref for diff-based sound triggers ─────
   const prevStateRef = useRef<UnoClientState | null>(null)
 
@@ -322,9 +330,14 @@ function Uno() {
     const incomingVersion = incoming.version ?? 0
     const lastVersion = lastVersionRef.current
 
-    // Ignore stale states
-    if (incomingVersion > 0 && lastVersion > 0 && incomingVersion <= lastVersion) {
-      if (IS_DEV) console.log(`[uno:sync] Ignored stale state v${incomingVersion} <= v${lastVersion}`)
+    // Ignore strictly-older states.
+    // Use strict less-than (<) so same-version re-broadcasts (e.g. from the
+    // server bumping then immediately re-broadcasting after a reconnect) are
+    // still applied.  This prevents the "players don't appear" bug where a
+    // transient version revert on the server caused all subsequent same-version
+    // broadcasts to be silently dropped by every connected client.
+    if (incomingVersion > 0 && lastVersion > 0 && incomingVersion < lastVersion) {
+      if (IS_DEV) console.log(`[uno:sync] Ignored stale state v${incomingVersion} < v${lastVersion}`)
       return
     }
 
@@ -541,11 +554,31 @@ function Uno() {
   }, [lobbyCode, isLoggedIn, user?.id, applyState])
 
   const sendAction = useCallback(async (action: { type: 'play'; cardId: string; chosenColor?: UnoColor } | { type: 'draw' } | { type: 'pass' }) => {
-    if (!state) return
-    const result = await unoSocket.sendAction(state.lobbyCode, action)
-    if (!result.success) {
-      setError(result.error || result.reason || 'Action failed')
-      setTimeout(() => setError(null), 3000)
+    // In-flight guard: ignore if another action is already pending.
+    if (!state || actionPendingRef.current) return
+    actionPendingRef.current = true
+    setActionPending(true)
+    const lobbyCodeSnapshot = state.lobbyCode
+    try {
+      const result = await unoSocket.sendAction(lobbyCodeSnapshot, action)
+      if (!result.success) {
+        setError(result.error || result.reason || 'Action failed')
+        setTimeout(() => setError(null), 3000)
+      }
+    } catch (e: any) {
+      // Timeout / network drop — show one toast then auto-resync state.
+      if (IS_DEV) console.warn('[uno:sendAction] timeout/error:', e?.message)
+      setError('Connection issue — resyncing…')
+      setTimeout(() => setError(null), 4000)
+      unoSocket.requestState(lobbyCodeSnapshot).then(res => {
+        if (res.success && res.gameState) {
+          lastVersionRef.current = res.gameState.version ?? 0
+          setState(res.gameState)
+        }
+      }).catch(() => { /* ignore secondary failure */ })
+    } finally {
+      actionPendingRef.current = false
+      setActionPending(false)
     }
   }, [state])
 
@@ -581,6 +614,8 @@ function Uno() {
   const onCardClick = (c: UnoCard) => {
     if (!isMyTurn) return
     if (!playable.has(c.id)) return
+    // Don't queue another action while one is already in-flight.
+    if (actionPendingRef.current) return
 
     // ── Wild cards: play sound then open colour picker ─────────────
     if (c.face.kind === 'wild') {
@@ -830,8 +865,27 @@ function Uno() {
           {isSpectator ? (
             <div className="uno-actions">
               <div className="uno-actions__status">
-                <span className="uno-actions__turn">👁 Spectating</span>
-                <span className="muted">{currentPlayer?.nickname || 'Player'}'s turn</span>
+                {state.phase === 'lobby' && (
+                  <>
+                    <span className="uno-actions__turn">👁 Spectating</span>
+                    <span className="muted">Waiting for the game to start…</span>
+                  </>
+                )}
+                {state.phase === 'playing' && (
+                  <>
+                    <span className="uno-actions__turn">👁 Spectating</span>
+                    <span className="muted">{currentPlayer?.nickname || 'Player'}'s turn</span>
+                  </>
+                )}
+                {state.phase === 'finished' && (() => {
+                  const winner = state.players.find(p => p.playerId === state.winnerId)
+                  return (
+                    <>
+                      <span className="uno-actions__turn">🏆 {winner?.nickname || 'Someone'} won!</span>
+                      <span className="muted">Waiting for the next round…</span>
+                    </>
+                  )
+                })()}
               </div>
               <div className="uno-actions__buttons">
                 <button className="btn-secondary uno-actions__btn" onClick={() => (window.location.href = '/main-menu')}>
@@ -871,9 +925,9 @@ function Uno() {
                     sfx.play('draw')
                     sendAction({ type: 'draw' })
                   }}
-                  disabled={hasAnyPlayable}
+                  disabled={hasAnyPlayable || actionPending}
                 >
-                  Draw
+                  {actionPending ? '…' : 'Draw'}
                 </button>
               )}
               {isMyTurn && drawnPlayable && (
@@ -883,8 +937,9 @@ function Uno() {
                     sfx.play('card_select')
                     sendAction({ type: 'pass' })
                   }}
+                  disabled={actionPending}
                 >
-                  Pass
+                  {actionPending ? '…' : 'Pass'}
                 </button>
               )}
               {/* UNO/Catch buttons removed — now handled via server-driven UNO prompt modal */}
