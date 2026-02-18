@@ -159,13 +159,20 @@ function _getAudio(url: string): HTMLAudioElement {
   return _audioCache.get(url)!
 }
 
-/** Preload the most-used sounds into memory (called once after first gesture). */
+/** Preload the most-used sounds into memory (called once after first gesture).
+ *  Setting preload='auto' alone is not enough in all browsers — we must also
+ *  call el.load() to actually trigger the network fetch / decode. */
 function _preloadCommon(): void {
-  const PRELOAD_EVENTS = ['deal', 'draw', 'card_play_self', 'card_play_other', 'card_punish']
+  const PRELOAD_EVENTS = ['deal', 'draw', 'card_play_self', 'card_play_other', 'card_punish', 'card_select', 'wild_card']
   for (const ev of PRELOAD_EVENTS) {
     for (const url of SOUNDS[ev] ?? []) {
       const el = _getAudio(url)
-      el.preload = 'auto'
+      if (el.preload !== 'auto') {
+        el.preload = 'auto'
+        // load() actually initiates the fetch; without it the file stays un-cached
+        // and the first play has a noticeable decode delay.
+        el.load()
+      }
     }
   }
 }
