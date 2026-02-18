@@ -179,7 +179,7 @@ function MainMenu() {
           <div className="card-grid" style={{ marginTop: '14px' }}>
             {(['POKER_PUBLIC_1', 'POKER_PUBLIC_2', 'POKER_PUBLIC_3'] as const).map((code, i) => {
               const r = roomsByKey.get(`poker:${code}`)
-              const disabled = r?.status === 'in_game'
+              const inGame = r?.status === 'in_game'
               return (
                 <div key={code} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'baseline' }}>
@@ -189,15 +189,14 @@ function MainMenu() {
                     </div>
                   </div>
                   <div className="muted" style={{ fontSize: '13px' }}>
-                    Status: {r?.status === 'in_game' ? 'In game' : 'Lobby'}
+                    Status: {inGame ? '🔴 In game' : '🟢 Lobby'}
                   </div>
                   <button
-                    className={disabled ? 'btn-secondary' : 'btn-primary'}
-                    disabled={disabled}
+                    className={inGame ? 'btn-secondary' : 'btn-primary'}
                     onClick={() => window.open(`/game/poker?lobby=${code}`, '_blank')}
                     style={{ width: 'auto', padding: '10px 14px' }}
                   >
-                    {disabled ? 'In Game' : 'Join'}
+                    {inGame ? '👁 Spectate' : 'Join'}
                   </button>
                 </div>
               )
@@ -205,7 +204,7 @@ function MainMenu() {
 
             {(['UNO_PUBLIC_1', 'UNO_PUBLIC_2', 'UNO_PUBLIC_3'] as const).map((code, i) => {
               const r = roomsByKey.get(`uno:${code}`)
-              const disabled = r?.status === 'in_game'
+              const inGame = r?.status === 'in_game'
               return (
                 <div key={code} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'baseline' }}>
@@ -215,15 +214,14 @@ function MainMenu() {
                     </div>
                   </div>
                   <div className="muted" style={{ fontSize: '13px' }}>
-                    Status: {r?.status === 'in_game' ? 'In game' : 'Lobby'}
+                    Status: {inGame ? '🔴 In game' : '🟢 Lobby'}
                   </div>
                   <button
-                    className={disabled ? 'btn-secondary' : 'btn-primary'}
-                    disabled={disabled}
+                    className={inGame ? 'btn-secondary' : 'btn-primary'}
                     onClick={() => window.open(`/game/uno?lobby=${code}`, '_blank')}
                     style={{ width: 'auto', padding: '10px 14px' }}
                   >
-                    {disabled ? 'In Game' : 'Join'}
+                    {inGame ? '👁 Spectate' : 'Join'}
                   </button>
                 </div>
               )
