@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import MainMenu from './pages/MainMenu'
@@ -7,22 +8,46 @@ import Leaderboards from './pages/Leaderboards'
 import Poker from './pages/Poker'
 import Uno from './pages/Uno'
 import { AuthProvider } from './context/AuthContext'
+import { sfx } from './services/sfx'
 
 function AppContent() {
   const location = useLocation()
-  
+
+  // ── Sound: unlock audio on first user gesture ──────────────────────────────
+  // Browser autoplay policies require a user interaction before audio can play.
+  // We attach one-shot listeners here (app root) so the unlock fires regardless
+  // of which page the user lands on first.
+  useEffect(() => {
+    sfx.init() // preload common sounds (no audio plays yet)
+
+    const unlock = () => {
+      sfx.unlock()
+      // Once unlocked we no longer need these listeners.
+      // `{ once: true }` handles removal automatically per listener.
+    }
+
+    window.addEventListener('pointerdown', unlock, { once: true })
+    window.addEventListener('keydown', unlock, { once: true })
+
+    return () => {
+      // Cleanup in case component unmounts before gesture (e.g. SSR / testing)
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('keydown', unlock)
+    }
+  }, [])
+
   // Poker page renders standalone (no sidebar) when accessed directly
   const isPokerPage = location.pathname === '/game/poker'
   const isUnoPage = location.pathname === '/game/uno'
-  
+
   if (isPokerPage) {
     return <Poker />
   }
-  
+
   if (isUnoPage) {
     return <Uno />
   }
-  
+
   return (
     <>
       <Sidebar />
