@@ -7,7 +7,9 @@ import { getCardImageUrl, formatCard, getSuitColor, preloadPokerCards } from '..
 import type { ClientGameState, ClientPlayer, Card, PlayerAction } from '../types/poker'
 import { getBestHand, cardKey, type HandResult } from '../utils/handEval'
 import WinCelebration from '../components/WinCelebration'
+import SfxControls from '../components/SfxControls'
 import tableLogo from '/assets/BULK_GAMES_LOGO.png'
+import { sfx } from '../services/sfx'
 
 /* Preload card images as soon as this module is imported (code-split by route) */
 preloadPokerCards()
@@ -374,7 +376,10 @@ function Poker() {
   // ── Version tracking for synchronization ──────────────────────
   const lastVersionRef = useRef<number>(0)
   const resyncingRef = useRef(false)
-  
+
+  // ── SFX: previous state ref for diff-based sound triggers ─────
+  const prevGameStateRef = useRef<ClientGameState | null>(null)
+
   /**
    * Apply a new game state only if its version is newer than what we have.
    * If a version gap is detected, request a full resync.
@@ -412,6 +417,61 @@ function Poker() {
 
     setGameState(patched)
   }, [])
+
+  // ── SFX: state-diff effect — fires sounds based on Poker state transitions ──
+  useEffect(() => {
+    if (!gameState) {
+      prevGameStateRef.current = null
+      return
+    }
+
+    const prev = prevGameStateRef.current
+    prevGameStateRef.current = gameState
+
+    // Skip sounds on first state load (no diff to compare)
+    if (!prev) return
+
+    const myId = gameState.myPlayerId
+
+    // ── Game starts ───────────────────────────────────────────────
+    if (!prev.gameStarted && gameState.gameStarted) {
+      sfx.play('game_start', { cooldownMs: 3000 })
+    }
+
+    // ── New hand: hole cards received (0 → 2 cards) ───────────────
+    if (prev.myHoleCards.length === 0 && gameState.myHoleCards.length > 0) {
+      sfx.play('deal', { cooldownMs: 0 })
+      setTimeout(() => sfx.play('deal', { cooldownMs: 0 }), 180)
+    }
+
+    // ── Community cards revealed ───────────────────────────────────
+    const newCommunityCount = gameState.communityCards.length - prev.communityCards.length
+    if (newCommunityCount > 0) {
+      for (let i = 0; i < newCommunityCount; i++) {
+        setTimeout(() => sfx.play('draw', { cooldownMs: 0 }), i * 160)
+      }
+    }
+
+    // ── My turn started ────────────────────────────────────────────
+    const prevTurnId = prev.players[prev.currentPlayerIndex]?.playerId
+    const currTurnId = gameState.players[gameState.currentPlayerIndex]?.playerId
+    if (
+      prevTurnId !== currTurnId &&
+      currTurnId === myId &&
+      gameState.gameStarted
+    ) {
+      sfx.play('card_select', { cooldownMs: 500 })
+    }
+
+    // ── I win (showdown results arrive with me as winner) ──────────
+    if (
+      !prev.showdownResults &&
+      gameState.showdownResults &&
+      gameState.winners?.includes(myId)
+    ) {
+      sfx.play('win', { cooldownMs: 3000 })
+    }
+  }, [gameState])
 
   // Connect and join lobby
   useEffect(() => {
@@ -546,7 +606,24 @@ function Poker() {
   
   const handleAction = useCallback(async (action: PlayerAction, amount?: number) => {
     if (!gameState) return
-    
+
+    // ── SFX: play sound immediately (optimistic, before server round-trip) ──
+    switch (action) {
+      case 'fold':
+        sfx.play('card_play_self')   // neutral card-toss cue for folding
+        break
+      case 'check':
+        sfx.play('card_select')      // subtle tap/click for checking
+        break
+      case 'call':
+        sfx.play('card_play_self')   // calling matches the self-play cue
+        break
+      case 'bet':
+      case 'raise':
+        sfx.play('card_punish')      // aggressive / impactful sound for betting
+        break
+    }
+
     const result = await pokerSocket.sendAction(
       gameState.lobbyCode,
       action,
@@ -705,6 +782,9 @@ function Poker() {
         </div>
         
         {gameState.gameStarted && <HandGuide />}
+
+        {/* ── Sound controls ─────────────────────────────────────── */}
+        <SfxControls />
         
         {timeRemaining !== null && gameState.gameStarted && (
           <div className={`poker-header__timer ${timeRemaining <= 10 ? 'poker-header__timer--warning' : ''}`}>
