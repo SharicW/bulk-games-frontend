@@ -4,8 +4,10 @@ import { motion } from 'framer-motion'
 import { useAuth } from '../hooks/useAuth'
 import Modal from '../components/Modal'
 import WinCelebration from '../components/WinCelebration'
+import SfxControls from '../components/SfxControls'
 import tableLogo from '/assets/BULK_GAMES_LOGO.png'
 import { unoSocket } from '../services/socket'
+import { sfx } from '../services/sfx'
 import type { UnoCard, UnoCardFace, UnoClientState, UnoColor } from '../types/uno'
 
 /** Build CSS classes for player cosmetics from game-state data */
@@ -278,6 +280,9 @@ const FlyingCard = memo(function FlyingCard({ card, images, fromRect, discardRef
   )
 })
 
+// Suppress unused-var lint for clamp (used by other utilities)
+void clamp
+
 function Uno() {
   const [searchParams] = useSearchParams()
   const lobbyCode = (searchParams.get('lobby') || '').toUpperCase()
@@ -305,6 +310,9 @@ function Uno() {
   // ── Version tracking for synchronization ──────────────────────
   const lastVersionRef = useRef<number>(0)
   const resyncingRef = useRef(false)
+
+  // ── SFX: previous state ref for diff-based sound triggers ─────
+  const prevStateRef = useRef<UnoClientState | null>(null)
 
   /**
    * Apply a new UNO game state only if its version is newer than what we have.
@@ -372,6 +380,82 @@ function Uno() {
   }, [state, myHand, topCard, drawnPlayable])
 
   const hasAnyPlayable = playable.size > 0
+
+  // ── SFX: state-diff effect — fires sounds based on game state transitions ──
+  useEffect(() => {
+    if (!state) {
+      prevStateRef.current = null
+      return
+    }
+
+    const prev = prevStateRef.current
+    prevStateRef.current = state
+
+    // Skip sounds for the very first state load (no diff to compare)
+    if (!prev) return
+
+    // ── Phase: lobby → playing (game starts) ───────────────────────────
+    if (prev.phase !== 'playing' && state.phase === 'playing') {
+      sfx.play('game_start', { cooldownMs: 3000 })
+      // Stagger deal sounds to mimic cards being distributed
+      setTimeout(() => sfx.play('deal', { cooldownMs: 0 }), 250)
+      setTimeout(() => sfx.play('deal', { cooldownMs: 0 }), 500)
+      return
+    }
+
+    // ── Phase: playing → finished (game over) ──────────────────────────
+    if (prev.phase === 'playing' && state.phase === 'finished') {
+      if (state.winnerId === uid) {
+        sfx.play('win', { cooldownMs: 3000 })
+      } else {
+        sfx.play('game_end', { cooldownMs: 3000 })
+      }
+      return
+    }
+
+    if (state.phase !== 'playing') return
+
+    // ── Turn change: now my turn ───────────────────────────────────────
+    const prevTurnId = prev.players[prev.currentPlayerIndex]?.playerId
+    const currTurnId = state.players[state.currentPlayerIndex]?.playerId
+    if (prevTurnId !== currTurnId && currTurnId === uid) {
+      sfx.play('card_select', { cooldownMs: 500 })
+    }
+
+    // ── Top card changed → a card was played ──────────────────────────
+    const prevTop = prev.discardPile?.[prev.discardPile.length - 1]
+    const currTop = state.discardPile?.[state.discardPile.length - 1]
+
+    if (currTop && prevTop?.id !== currTop.id) {
+      // prevTurnId is who just played; only play sounds here for OTHER players.
+      // When the local player plays, sounds are triggered in onCardClick directly.
+      if (prevTurnId && prevTurnId !== uid) {
+        switch (currTop.face.kind) {
+          case 'reverse':
+            sfx.play('card_reverse', { cooldownMs: 300 })
+            break
+          case 'skip':
+            sfx.play('card_skip', { cooldownMs: 300 })
+            break
+          case 'draw2':
+          case 'wild4':
+            sfx.play('card_punish', { cooldownMs: 300 })
+            break
+          case 'wild':
+            sfx.play('wild_card', { cooldownMs: 300 })
+            break
+          default:
+            sfx.play('card_play_other', { cooldownMs: 200 })
+        }
+      }
+    }
+
+    // ── UNO prompt appeared ────────────────────────────────────────────
+    // (no dedicated "uno call" sound file, so we reuse card_select as an attention ping)
+    if (!prev.unoPrompt?.active && state.unoPrompt?.active) {
+      sfx.play('card_select', { cooldownMs: 1000 })
+    }
+  }, [state, uid])
 
   useEffect(() => {
     if (!isLoggedIn || !user) return
@@ -497,11 +581,33 @@ function Uno() {
   const onCardClick = (c: UnoCard) => {
     if (!isMyTurn) return
     if (!playable.has(c.id)) return
-    if (c.face.kind === 'wild' || c.face.kind === 'wild4') {
+
+    // ── Wild cards: play sound then open colour picker ─────────────
+    if (c.face.kind === 'wild') {
+      sfx.play('wild_card')
       setPendingWildCardId(c.id)
       setColorModalOpen(true)
       return
     }
+    if (c.face.kind === 'wild4') {
+      sfx.play('card_punish') // Wild Draw-4 is a punishment card
+      setPendingWildCardId(c.id)
+      setColorModalOpen(true)
+      return
+    }
+
+    // ── Special action cards ───────────────────────────────────────
+    if (c.face.kind === 'reverse') {
+      sfx.play('card_reverse')
+    } else if (c.face.kind === 'skip') {
+      sfx.play('card_skip')
+    } else if (c.face.kind === 'draw2') {
+      sfx.play('card_punish')
+    } else {
+      // Normal numbered card
+      sfx.play('card_play_self')
+    }
+
     // Capture card position for flying animation
     const cardEl = document.querySelector(`[data-card-id="${c.id}"]`)
     const fromRect = cardEl?.getBoundingClientRect()
@@ -590,6 +696,9 @@ function Uno() {
         </div>
 
         <div className="uno-header__controls">
+          {/* ── Sound controls ─────────────────────────────────── */}
+          <SfxControls />
+
           <button className="btn-secondary" onClick={handleLeaveLobby} style={{ width: 'auto', padding: '8px 16px' }}>
             Leave Lobby
           </button>
@@ -758,14 +867,23 @@ function Uno() {
               {isMyTurn && !drawnPlayable && (
                 <button
                   className="btn-primary uno-actions__btn"
-                  onClick={() => sendAction({ type: 'draw' })}
+                  onClick={() => {
+                    sfx.play('draw')
+                    sendAction({ type: 'draw' })
+                  }}
                   disabled={hasAnyPlayable}
                 >
                   Draw
                 </button>
               )}
               {isMyTurn && drawnPlayable && (
-                <button className="btn-secondary uno-actions__btn" onClick={() => sendAction({ type: 'pass' })}>
+                <button
+                  className="btn-secondary uno-actions__btn"
+                  onClick={() => {
+                    sfx.play('card_select')
+                    sendAction({ type: 'pass' })
+                  }}
+                >
                   Pass
                 </button>
               )}
@@ -858,6 +976,7 @@ function Uno() {
                     transform: 'translate(-50%, -50%)',
                   }}
                   onClick={() => {
+                    sfx.play('card_select')
                     if (iAmTarget) {
                       unoSocket.callUno(state.lobbyCode);
                     } else {
