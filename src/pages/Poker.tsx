@@ -323,7 +323,7 @@ function ActionPanel({
       {me.stack > toCall && (
         <div className="poker-actions__slider">
           <div className="poker-actions__presets">
-            <button className="btn-secondary" onClick={setHalfPot}>½ Pot</button>
+            <button className="btn-secondary" onClick={setHalfPot}>1/2 Pot</button>
             <button className="btn-secondary" onClick={setPot}>Pot</button>
             <button className="btn-secondary" onClick={setAllIn}>All-in</button>
           </div>
