@@ -23,6 +23,7 @@ const BORDER_MAP: Record<string, string> = {
   border_ice: 'cosmetic-border--ice',
   border_emerald: 'cosmetic-border--emerald',
   border_purple: 'cosmetic-border--purple',
+  border_ruby: 'cosmetic-border--ruby',
 }
 const EFFECT_MAP: Record<string, string> = {
   effect_glow: 'cosmetic-effect--glow',
@@ -33,6 +34,8 @@ const EFFECT_MAP: Record<string, string> = {
   effect_black_hearts: 'cosmetic-effect--hearts-black',
   effect_fire_burst: 'cosmetic-effect--fire-burst',
   effect_sakura_petals: 'cosmetic-effect--sakura-petals',
+  effect_gold_stars: 'cosmetic-effect--gold-stars',
+  effect_rainbow_burst: 'cosmetic-effect--rainbow-burst',
 }
 function buildCosmeticClasses(border: string | null | undefined, effect: string | null | undefined): string {
   const classes: string[] = []
