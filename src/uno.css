@@ -698,6 +698,14 @@
   display: block;
 }
 
+/* ── Draw animation: card back flies from deck to hand ───────── */
+.uno-flying-card--back {
+  background: linear-gradient(145deg, #1e3c72, #0d2241);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
 /* ── Impact ring on discard pile ─────────────────────────────── */
 .uno-discard__impact {
   position: absolute;
