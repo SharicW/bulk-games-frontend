@@ -455,8 +455,11 @@ function Uno() {
 
   // ── Draw animation ─────────────────────────────────────────────
   // drawnCard is null while in-flight (card back shown), set to the real
-  // card once the server ACK arrives so we can reveal the face mid-flight.
+  // card once the state update / ACK reveals it.
   const [drawFlying, setDrawFlying] = useState<{ drawnCard: UnoCard | null } | null>(null)
+  // Snapshot of hand IDs captured before the draw action is sent.
+  // Used to diff state updates and find the newly drawn card.
+  const pendingDrawSnapRef = useRef<Set<string> | null>(null)
   // Opponent draw flash: shown when another player draws (uno:drawFx event)
   const [oppDrawFlash, setOppDrawFlash] = useState<{ id: string } | null>(null)
   const deckRef = useRef<HTMLDivElement>(null)
@@ -573,6 +576,21 @@ function Uno() {
       setPendingPlayCardId(null)
     }
   }, [state, pendingPlayCardId, uid])
+
+  // ── Drawn card detection (state-broadcast path) ─────────────────────────
+  // When the server state arrives after a draw action, diff the hand against
+  // the pre-draw snapshot to find the newly drawn card and reveal its face.
+  // This is more reliable than relying solely on the ACK payload structure.
+  useEffect(() => {
+    if (!drawFlying || drawFlying.drawnCard !== null || !pendingDrawSnapRef.current) return
+    const snap = pendingDrawSnapRef.current
+    // state.hands[uid] contains REAL cards for the local player (server-personalised)
+    const hand: UnoCard[] = state?.hands?.[uid] ?? state?.hands?.[String(uid)] ?? []
+    const newCard = hand.find(c => !snap.has(c.id) && c.face.kind !== 'wild')
+    if (!newCard) return
+    pendingDrawSnapRef.current = null
+    setDrawFlying(prev => prev !== null ? { drawnCard: newCard } : null)
+  }, [state, drawFlying, uid])
 
   // ── SFX: state-diff effect — fires sounds based on game state transitions ──
   useEffect(() => {
@@ -1141,25 +1159,33 @@ function Uno() {
                     // Guard: don't start if sendAction will bail out early
                     if (!state || actionPendingRef.current) return
                     sfx.play('draw')
-                    // Snapshot current hand IDs so we can detect the new card
-                    const prevHandIds = new Set(myHand.map(c => c.id))
-                    // myPlayerId from server state is the authoritative hand key
-                    const myPid = state.myPlayerId
-                    // Start the flying animation immediately — don't wait for ACK
+                    // Snapshot current hand IDs for both state-based and ACK-based detection
+                    const snap = new Set(myHand.map((c: UnoCard) => c.id))
+                    pendingDrawSnapRef.current = snap
+                    // Start the flying animation immediately — don't wait for server
                     setDrawFlying({ drawnCard: null })
                     sendAction({ type: 'draw' }, {
-                      onFailure: () => setDrawFlying(null),
+                      onFailure: () => {
+                        setDrawFlying(null)
+                        pendingDrawSnapRef.current = null
+                      },
+                      // ACK fast-path: server returns updated gameState in the ACK
+                      // before the broadcast arrives, so we can reveal the card sooner.
                       onAck: (result) => {
-                        if (!result?.gameState) return
-                        // Use the exact key the server uses for this player's hand
-                        const newHand: UnoCard[] = result.gameState.hands?.[myPid]
-                          ?? result.gameState.hands?.[String(myPid)]
-                          ?? []
-                        const newCard = newHand.find((c: UnoCard) => !prevHandIds.has(c.id))
+                        if (!result?.gameState || !pendingDrawSnapRef.current) return
+                        const myPid = state.myPlayerId
+                        const newHand: UnoCard[] =
+                          result.gameState.hands?.[myPid] ??
+                          result.gameState.hands?.[String(myPid)] ??
+                          []
+                        const newCard = newHand.find(
+                          (c: UnoCard) => !snap.has(c.id) && c.face.kind !== 'wild',
+                        )
                         if (newCard) {
-                          // Reveal the real card face mid-flight (drawer only)
-                          setDrawFlying(prev => prev ? { drawnCard: newCard } : null)
+                          pendingDrawSnapRef.current = null
+                          setDrawFlying(prev => prev !== null ? { drawnCard: newCard } : null)
                         }
+                        // If not found here, the state-broadcast useEffect will catch it
                       },
                     })
                   }}
