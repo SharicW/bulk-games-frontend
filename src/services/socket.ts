@@ -105,10 +105,16 @@ class NamespacedSocket {
 
     this._connectPromise = new Promise<void>((resolve, reject) => {
       const s = io(this.url(), {
+        // Prefer websocket; fall back to polling only if ws is unavailable.
+        // Railway fully supports websockets so polling is rarely needed.
         transports: ['websocket', 'polling'],
+        // Unlimited reconnect attempts — important for Railway cold starts.
         reconnection: true,
-        reconnectionAttempts: 10,
+        reconnectionAttempts: Infinity,
         reconnectionDelay: 800,
+        reconnectionDelayMax: 5000,
+        // Must be < server pingTimeout (30s) to stay alive through Railway proxy.
+        timeout: 20000,
         auth: { token },
       })
 
@@ -156,6 +162,11 @@ class NamespacedSocket {
       s.on('test', (data: any) => {
         this.log('test:', data)
         this.emitLocal('test', data)
+      })
+
+      // UNO draw animation event for opponents (no card face, just playerId + count)
+      s.on('uno:drawFx', (data: any) => {
+        this.emitLocal('uno:drawFx', data)
       })
     })
 
