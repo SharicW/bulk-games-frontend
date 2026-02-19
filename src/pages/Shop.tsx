@@ -40,6 +40,24 @@ function EffectPreview({ effectId }: { effectId: string }) {
       </div>
     )
   }
+  if (effectId === 'effect_gold_stars') {
+    return (
+      <div className="effect-preview effect-preview--gold-stars">
+        {[0, 1, 2, 3, 4].map(i => (
+          <span key={i} className="effect-preview__particle" style={{ animationDelay: `${i * 0.22}s` }}>★</span>
+        ))}
+      </div>
+    )
+  }
+  if (effectId === 'effect_rainbow_burst') {
+    return (
+      <div className="effect-preview effect-preview--rainbow">
+        {[0, 1, 2, 3, 4, 5].map(i => (
+          <span key={i} className="effect-preview__dot" style={{ animationDelay: `${i * 0.18}s` }} />
+        ))}
+      </div>
+    )
+  }
   return null
 }
 
@@ -146,7 +164,7 @@ function Shop() {
           <h1>Shop</h1>
         </div>
         <div className="shop-balance">
-          <span className="shop-balance__icon">🪙</span>
+          <span className="shop-balance__icon">(C)</span>
           <span className="shop-balance__amount">{user?.coins ?? 0} coins</span>
         </div>
       </div>
@@ -224,7 +242,7 @@ function Shop() {
                           onClick={() => handleBuy(item.id)}
                           disabled={busy === item.id || (user?.coins ?? 0) < item.price}
                         >
-                          {busy === item.id ? 'Buying...' : `Buy — ${item.price} 🪙`}
+                          {busy === item.id ? 'Buying...' : `Buy - ${item.price} (C)`}
                         </button>
                       ) : isEquipped ? (
                         <span className="shop-item__badge shop-item__badge--equipped">Equipped</span>
@@ -275,7 +293,7 @@ function Shop() {
                           onClick={() => handleBuy(item.id)}
                           disabled={busy === item.id || (user?.coins ?? 0) < item.price}
                         >
-                          {busy === item.id ? 'Buying...' : `Buy — ${item.price} 🪙`}
+                          {busy === item.id ? 'Buying...' : `Buy - ${item.price} (C)`}
                         </button>
                       ) : isEquipped ? (
                         <span className="shop-item__badge shop-item__badge--equipped">Equipped</span>
