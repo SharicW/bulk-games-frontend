@@ -19,6 +19,7 @@ const BORDER_MAP: Record<string, string> = {
   border_ice: 'cosmetic-border--ice',
   border_emerald: 'cosmetic-border--emerald',
   border_purple: 'cosmetic-border--purple',
+  border_ruby: 'cosmetic-border--ruby',
 }
 const EFFECT_MAP: Record<string, string> = {
   effect_glow: 'cosmetic-effect--glow',
@@ -29,6 +30,8 @@ const EFFECT_MAP: Record<string, string> = {
   effect_black_hearts: 'cosmetic-effect--hearts-black',
   effect_fire_burst: 'cosmetic-effect--fire-burst',
   effect_sakura_petals: 'cosmetic-effect--sakura-petals',
+  effect_gold_stars: 'cosmetic-effect--gold-stars',
+  effect_rainbow_burst: 'cosmetic-effect--rainbow-burst',
 }
 function buildCosmeticClasses(border: string | null | undefined, effect: string | null | undefined): string {
   const classes: string[] = []
@@ -414,7 +417,7 @@ function Uno() {
   const [pendingWildCardId, setPendingWildCardId] = useState<string | null>(null)
 
   // ── Celebration (server-driven; visible to everyone) ───────────
-  const [celebration, setCelebration] = useState<null | { id: string; effectId: 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'sakura_petals' }>(null)
+  const [celebration, setCelebration] = useState<null | { id: string; effectId: 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'sakura_petals' | 'gold_stars' | 'rainbow_burst' }>(null)
   const celebrationTimerRef = useRef<number | null>(null)
 
   // ── Flying card animation state ─────────────────────────────────
@@ -586,7 +589,7 @@ function Uno() {
     const snap = pendingDrawSnapRef.current
     // state.hands[uid] contains REAL cards for the local player (server-personalised)
     const hand: UnoCard[] = state?.hands?.[uid] ?? state?.hands?.[String(uid)] ?? []
-    const newCard = hand.find(c => !snap.has(c.id) && c.face.kind !== 'wild')
+    const newCard = hand.find(c => !snap.has(c.id))
     if (!newCard) return
     pendingDrawSnapRef.current = null
     setDrawFlying(prev => prev !== null ? { drawnCard: newCard } : null)
@@ -724,7 +727,7 @@ function Uno() {
     const unsubscribeCelebration = unoSocket.on('game:celebration', (payload) => {
       const p = payload as any
       const id = String(p?.id || '')
-      const effectId = (p?.effectId || 'stars') as 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'sakura_petals'
+      const effectId = (p?.effectId || 'stars') as 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'sakura_petals' | 'gold_stars' | 'rainbow_burst'
       if (!id) return
       if (IS_DEV) console.log(`[uno:celebration] id=${id} effect=${effectId}`)
       setCelebration({ id, effectId })
@@ -737,7 +740,9 @@ function Uno() {
     })
 
     const unsubscribeConnect = unoSocket.on('connect', () => {
-      if (!stopped && lobbyCode) join()
+      if (!stopped && lobbyCode) join().catch(err => {
+        if (!stopped) console.warn('[uno:reconnect] join failed:', err?.message || err)
+      })
     })
 
     // Opponent draw animation: another player drew a card (no card face)
@@ -1179,7 +1184,7 @@ function Uno() {
                           result.gameState.hands?.[String(myPid)] ??
                           []
                         const newCard = newHand.find(
-                          (c: UnoCard) => !snap.has(c.id) && c.face.kind !== 'wild',
+                          (c: UnoCard) => !snap.has(c.id),
                         )
                         if (newCard) {
                           pendingDrawSnapRef.current = null
