@@ -253,27 +253,64 @@ const UnoCardImg = memo(function UnoCardImg({ card, images, className, dimmed, g
   )
 })
 
-/** Card back that "flies" from the deck to the hand on Draw */
-const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, onComplete }: {
+/** Card that "flies" from the deck to the player's hand on Draw.
+ *  Initially shows a proper UNO card back; when `drawnCard` is set (from server
+ *  ACK) the real card face fades in so the player sees what they drew. */
+const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, drawnCard, images, onComplete }: {
   deckRef: React.RefObject<HTMLDivElement | null>
   handRef: React.RefObject<HTMLDivElement | null>
+  drawnCard: UnoCard | null
+  images: Record<string, string[]>
   onComplete: () => void
 }) {
-  // Capture rects at mount time (component is only mounted when both refs are valid)
-  const deckRect = deckRef.current!.getBoundingClientRect()
-  const handRect = handRef.current!.getBoundingClientRect()
-  const fromX = deckRect.left + deckRect.width / 2 - 43
-  const fromY = deckRect.top + deckRect.height / 2 - 62
-  const toX = handRect.left + handRect.width / 2 - 43
-  const toY = handRect.bottom - 130
+  // Capture rects ONCE at mount — deck/hand don't move during the flight
+  const fromRef = useRef<{ x: number; y: number; toX: number; toY: number } | null>(null)
+  if (!fromRef.current) {
+    const deckRect = deckRef.current!.getBoundingClientRect()
+    const handRect = handRef.current!.getBoundingClientRect()
+    fromRef.current = {
+      x: deckRect.left + deckRect.width / 2 - 43,
+      y: deckRect.top + deckRect.height / 2 - 62,
+      toX: handRect.left + handRect.width / 2 - 43,
+      toY: handRect.bottom - 130,
+    }
+  }
+  const { x: fromX, y: fromY, toX, toY } = fromRef.current
+
+  // Resolve card image when we know the drawn card
+  const cardSrc = drawnCard ? (() => {
+    const fId = faceId(drawnCard.face)
+    const variants = images[fId] || []
+    return variants.length ? variants[Math.abs(hashStr(drawnCard.id)) % variants.length] : null
+  })() : null
+
   return (
     <motion.div
-      className="uno-flying-card uno-flying-card--back"
+      className="uno-flying-card"
       initial={{ x: fromX, y: fromY, scale: 1.12, opacity: 1, rotate: -8 }}
       animate={{ x: toX, y: toY, scale: 0.88, opacity: 0.9, rotate: 0 }}
-      transition={{ duration: 0.42, ease: [0.22, 0.68, 0.35, 1] }}
+      transition={{ duration: 0.44, ease: [0.22, 0.68, 0.35, 1] }}
       onAnimationComplete={onComplete}
-    />
+    >
+      {/* Deck-style card back — fades out when real card is revealed */}
+      <motion.div
+        className="uno-draw-back"
+        animate={{ opacity: cardSrc ? 0 : 1 }}
+        transition={{ duration: 0.14 }}
+      />
+      {/* Real card face — fades in from ACK */}
+      {cardSrc && (
+        <motion.img
+          src={cardSrc}
+          alt=""
+          draggable={false}
+          className="uno-draw-face"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.14 }}
+        />
+      )}
+    </motion.div>
   )
 })
 
@@ -340,9 +377,6 @@ function Uno() {
   const actionPendingRef = useRef(false)
   const [actionPending, setActionPending] = useState(false)
 
-  // ── UNO / Catch button de-bounce ───────────────────────────────
-  const unoCallPendingRef = useRef(false)
-
   // ── SFX: previous state ref for diff-based sound triggers ─────
   const prevStateRef = useRef<UnoClientState | null>(null)
 
@@ -364,7 +398,9 @@ function Uno() {
   const pendingWildFromRectRef = useRef<DOMRect | null>(null)
 
   // ── Draw animation ─────────────────────────────────────────────
-  const [drawFlying, setDrawFlying] = useState(false)
+  // drawnCard is null while in-flight (card back shown), set to the real
+  // card once the server ACK arrives so we can reveal the face mid-flight.
+  const [drawFlying, setDrawFlying] = useState<{ drawnCard: UnoCard | null } | null>(null)
   const deckRef = useRef<HTMLDivElement>(null)
   const handRef = useRef<HTMLDivElement>(null)
 
@@ -641,7 +677,7 @@ function Uno() {
 
   const sendAction = useCallback(async (
     action: { type: 'play'; cardId: string; chosenColor?: UnoColor } | { type: 'draw' } | { type: 'pass' },
-    { onFailure }: { onFailure?: () => void } = {},
+    { onFailure, onAck }: { onFailure?: () => void; onAck?: (result: any) => void } = {},
   ) => {
     // In-flight guard: ignore if another action is already pending.
     if (!state || actionPendingRef.current) return
@@ -654,12 +690,14 @@ function Uno() {
         onFailure?.()
         setError(result.error || result.reason || 'Action failed')
         setTimeout(() => setError(null), 3000)
+      } else {
+        onAck?.(result)
       }
     } catch (e: any) {
       // Timeout / network drop — restore any optimistic UI, show toast, resync.
       onFailure?.()
       if (IS_DEV) console.warn('[uno:sendAction] timeout/error:', e?.message)
-      setError('Connection issue — resyncing…')
+      setError('Connection issue - resyncing...')
       setTimeout(() => setError(null), 4000)
       unoSocket.requestState(lobbyCodeSnapshot).then(res => {
         if (res.success && res.gameState) {
@@ -818,8 +856,8 @@ function Uno() {
   }
 
   const phaseLabel = state.phase === 'lobby' ? 'LOBBY' : state.phase === 'playing' ? 'PLAYING' : 'FINISHED'
-  const dirLabel = state.direction === 1 ? '↻' : '↺'
-  const colorLabel = state.currentColor ? state.currentColor.toUpperCase() : '—'
+  const dirLabel = state.direction === 1 ? 'CW' : 'CCW'
+  const colorLabel = state.currentColor ? state.currentColor.toUpperCase() : '-'
   const winner = state.winnerId ? state.players.find(p => p.playerId === state.winnerId) : null
 
   return (
@@ -978,7 +1016,7 @@ function Uno() {
                 {state.phase === 'lobby' && (
                   <>
                     <span className="uno-actions__turn">👁 Spectating</span>
-                    <span className="muted">Waiting for the game to start…</span>
+                    <span className="muted">Waiting for the game to start...</span>
                   </>
                 )}
                 {state.phase === 'playing' && (
@@ -992,7 +1030,7 @@ function Uno() {
                   return (
                     <>
                       <span className="uno-actions__turn">🏆 {winner?.nickname || 'Someone'} won!</span>
-                      <span className="muted">Waiting for the next round…</span>
+                      <span className="muted">Waiting for the next round...</span>
                     </>
                   )
                 })()}
@@ -1010,11 +1048,11 @@ function Uno() {
                 <>
                   <span className="uno-actions__turn">Your turn</span>
                   {drawnPlayable ? (
-                    <span className="muted">You drew a playable card — play it or pass</span>
+                    <span className="muted">You drew a playable card - play it or pass</span>
                   ) : hasAnyPlayable ? (
                     <span className="muted">Play a card</span>
                   ) : (
-                    <span className="muted">No playable cards — draw 1</span>
+                    <span className="muted">No playable cards - draw 1</span>
                   )}
                 </>
               ) : (
@@ -1033,15 +1071,26 @@ function Uno() {
                   className="btn-primary uno-actions__btn"
                   onClick={() => {
                     sfx.play('draw')
+                    // Snapshot hand BEFORE action so we can diff after ACK
+                    const prevHandIds = new Set(myHand.map(c => c.id))
                     // Start the flying animation immediately — don't wait for ACK
-                    setDrawFlying(true)
+                    setDrawFlying({ drawnCard: null })
                     sendAction({ type: 'draw' }, {
-                      onFailure: () => setDrawFlying(false),
+                      onFailure: () => setDrawFlying(null),
+                      onAck: (result) => {
+                        if (!result?.gameState) return
+                        const newHand: UnoCard[] = result.gameState.hands?.[uid] ?? []
+                        const newCard = newHand.find((c: UnoCard) => !prevHandIds.has(c.id))
+                        if (newCard) {
+                          // Reveal the real card face mid-flight
+                          setDrawFlying(prev => prev ? { drawnCard: newCard } : null)
+                        }
+                      },
                     })
                   }}
                   disabled={hasAnyPlayable || actionPending}
                 >
-                  {actionPending ? '…' : 'Draw'}
+                  {actionPending ? '...' : 'Draw'}
                 </button>
               )}
               {isMyTurn && drawnPlayable && (
@@ -1053,7 +1102,7 @@ function Uno() {
                   }}
                   disabled={actionPending}
                 >
-                  {actionPending ? '…' : 'Pass'}
+                  {actionPending ? '...' : 'Pass'}
                 </button>
               )}
               {/* UNO/Catch buttons removed — now handled via server-driven UNO prompt modal */}
@@ -1194,12 +1243,14 @@ function Uno() {
         />
       )}
 
-      {/* Draw animation: card back flies from deck to hand */}
+      {/* Draw animation: card flies from deck to hand; reveals real face on ACK */}
       {drawFlying && deckRef.current && handRef.current && (
         <FlyingDrawCard
           deckRef={deckRef}
           handRef={handRef}
-          onComplete={() => setDrawFlying(false)}
+          drawnCard={drawFlying.drawnCard}
+          images={images}
+          onComplete={() => setDrawFlying(null)}
         />
       )}
     </div>
