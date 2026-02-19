@@ -254,8 +254,9 @@ const UnoCardImg = memo(function UnoCardImg({ card, images, className, dimmed, g
 })
 
 /** Card that "flies" from the deck to the player's hand on Draw.
- *  Initially shows a proper UNO card back; when `drawnCard` is set (from server
- *  ACK) the real card face fades in so the player sees what they drew. */
+ *  Shows the drawer the real card face; opponents see a card back (or nothing).
+ *  Holds briefly at the destination if the server ACK hasn't arrived yet
+ *  (covers Railway round-trips of ~100-400ms on a 680ms animation). */
 const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, drawnCard, images, onComplete }: {
   deckRef: React.RefObject<HTMLDivElement | null>
   handRef: React.RefObject<HTMLDivElement | null>
@@ -277,6 +278,37 @@ const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, drawnCar
   }
   const { x: fromX, y: fromY, toX, toY } = fromRef.current
 
+  // Keep a stable ref to onComplete so effects don't need it as a dep
+  const onCompleteRef = useRef(onComplete)
+  onCompleteRef.current = onComplete
+
+  // motionDone: true once Framer Motion finishes the fly animation
+  const [motionDone, setMotionDone] = useState(false)
+  // holdTimerRef: timeout that fires onComplete when waiting for ACK
+  const holdTimerRef = useRef<number | null>(null)
+
+  // After motion completes: if card already known → brief reveal then done;
+  // otherwise hold up to 650ms for the ACK, then done regardless.
+  useEffect(() => {
+    if (!motionDone) return
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current)
+    if (drawnCard) {
+      holdTimerRef.current = window.setTimeout(() => onCompleteRef.current(), 320)
+    } else {
+      holdTimerRef.current = window.setTimeout(() => onCompleteRef.current(), 650)
+    }
+    return () => { if (holdTimerRef.current) clearTimeout(holdTimerRef.current) }
+  }, [motionDone]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // If ACK arrives WHILE we're holding (motionDone but waiting), cancel the
+  // long-wait timer and replace with a short reveal timer instead.
+  useEffect(() => {
+    if (!motionDone || !drawnCard) return
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current)
+    holdTimerRef.current = window.setTimeout(() => onCompleteRef.current(), 320)
+    return () => { if (holdTimerRef.current) clearTimeout(holdTimerRef.current) }
+  }, [drawnCard, motionDone])
+
   // Resolve card image when we know the drawn card
   const cardSrc = drawnCard ? (() => {
     const fId = faceId(drawnCard.face)
@@ -289,16 +321,16 @@ const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, drawnCar
       className="uno-flying-card"
       initial={{ x: fromX, y: fromY, scale: 1.12, opacity: 1, rotate: -8 }}
       animate={{ x: toX, y: toY, scale: 0.88, opacity: 0.9, rotate: 0 }}
-      transition={{ duration: 0.44, ease: [0.22, 0.68, 0.35, 1] }}
-      onAnimationComplete={onComplete}
+      transition={{ duration: 0.68, ease: [0.22, 0.68, 0.35, 1] }}
+      onAnimationComplete={() => setMotionDone(true)}
     >
-      {/* Deck-style card back — fades out when real card is revealed */}
+      {/* Deck-style card back — fades out when real card face is revealed */}
       <motion.div
         className="uno-draw-back"
         animate={{ opacity: cardSrc ? 0 : 1 }}
         transition={{ duration: 0.14 }}
       />
-      {/* Real card face — fades in from ACK */}
+      {/* Real card face (drawer only) — fades in once ACK delivers drawnCard */}
       {cardSrc && (
         <motion.img
           src={cardSrc}
@@ -307,9 +339,33 @@ const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, drawnCar
           className="uno-draw-face"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.14 }}
+          transition={{ duration: 0.16 }}
         />
       )}
+    </motion.div>
+  )
+})
+
+/** Brief card-back flash at the deck for opponents (via uno:drawFx event).
+ *  Drawer never sees this — they have their own FlyingDrawCard. */
+const OppDrawFlash = memo(function OppDrawFlash({ deckRef, onComplete }: {
+  deckRef: React.RefObject<HTMLDivElement | null>
+  onComplete: () => void
+}) {
+  const rect = deckRef.current?.getBoundingClientRect()
+  if (!rect) return null
+  const x = rect.left + rect.width / 2 - 43
+  const y = rect.top + rect.height / 2 - 62
+  return (
+    <motion.div
+      className="uno-flying-card"
+      initial={{ x, y, scale: 0.7, opacity: 0, rotate: 0 }}
+      animate={{ x, y: y - 28, scale: 1.1, opacity: 1, rotate: -6 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.28, ease: 'easeOut' }}
+      onAnimationComplete={onComplete}
+    >
+      <div className="uno-draw-back" />
     </motion.div>
   )
 })
@@ -401,6 +457,8 @@ function Uno() {
   // drawnCard is null while in-flight (card back shown), set to the real
   // card once the server ACK arrives so we can reveal the face mid-flight.
   const [drawFlying, setDrawFlying] = useState<{ drawnCard: UnoCard | null } | null>(null)
+  // Opponent draw flash: shown when another player draws (uno:drawFx event)
+  const [oppDrawFlash, setOppDrawFlash] = useState<{ id: string } | null>(null)
   const deckRef = useRef<HTMLDivElement>(null)
   const handRef = useRef<HTMLDivElement>(null)
 
@@ -664,6 +722,15 @@ function Uno() {
       if (!stopped && lobbyCode) join()
     })
 
+    // Opponent draw animation: another player drew a card (no card face)
+    const unsubscribeDrawFx = unoSocket.on('uno:drawFx', (payload) => {
+      const p = payload as { playerId?: string | number }
+      if (!p?.playerId) return
+      // Only show flash for OTHER players; drawer already has FlyingDrawCard
+      if (String(p.playerId) === String(userIdRef.current)) return
+      setOppDrawFlash({ id: `drawfx_${p.playerId}_${Date.now()}` })
+    })
+
     return () => {
       stopped = true
       unsubscribeState()
@@ -671,6 +738,7 @@ function Uno() {
       unsubscribeCelebration()
       unsubscribeEnd()
       unsubscribeConnect()
+      unsubscribeDrawFx()
       if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
     }
   }, [lobbyCode, isLoggedIn, user?.id, applyState])
@@ -1070,19 +1138,26 @@ function Uno() {
                 <button
                   className="btn-primary uno-actions__btn"
                   onClick={() => {
+                    // Guard: don't start if sendAction will bail out early
+                    if (!state || actionPendingRef.current) return
                     sfx.play('draw')
-                    // Snapshot hand BEFORE action so we can diff after ACK
+                    // Snapshot current hand IDs so we can detect the new card
                     const prevHandIds = new Set(myHand.map(c => c.id))
+                    // myPlayerId from server state is the authoritative hand key
+                    const myPid = state.myPlayerId
                     // Start the flying animation immediately — don't wait for ACK
                     setDrawFlying({ drawnCard: null })
                     sendAction({ type: 'draw' }, {
                       onFailure: () => setDrawFlying(null),
                       onAck: (result) => {
                         if (!result?.gameState) return
-                        const newHand: UnoCard[] = result.gameState.hands?.[uid] ?? []
+                        // Use the exact key the server uses for this player's hand
+                        const newHand: UnoCard[] = result.gameState.hands?.[myPid]
+                          ?? result.gameState.hands?.[String(myPid)]
+                          ?? []
                         const newCard = newHand.find((c: UnoCard) => !prevHandIds.has(c.id))
                         if (newCard) {
-                          // Reveal the real card face mid-flight
+                          // Reveal the real card face mid-flight (drawer only)
                           setDrawFlying(prev => prev ? { drawnCard: newCard } : null)
                         }
                       },
@@ -1240,6 +1315,15 @@ function Uno() {
             setShowImpact(true)
             setTimeout(() => setShowImpact(false), 280)
           }}
+        />
+      )}
+
+      {/* Opponent draw flash: card-back pulse at deck for other players drawing */}
+      {oppDrawFlash && deckRef.current && (
+        <OppDrawFlash
+          key={oppDrawFlash.id}
+          deckRef={deckRef}
+          onComplete={() => setOppDrawFlash(null)}
         />
       )}
 
