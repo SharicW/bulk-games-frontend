@@ -253,6 +253,30 @@ const UnoCardImg = memo(function UnoCardImg({ card, images, className, dimmed, g
   )
 })
 
+/** Card back that "flies" from the deck to the hand on Draw */
+const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, onComplete }: {
+  deckRef: React.RefObject<HTMLDivElement | null>
+  handRef: React.RefObject<HTMLDivElement | null>
+  onComplete: () => void
+}) {
+  // Capture rects at mount time (component is only mounted when both refs are valid)
+  const deckRect = deckRef.current!.getBoundingClientRect()
+  const handRect = handRef.current!.getBoundingClientRect()
+  const fromX = deckRect.left + deckRect.width / 2 - 43
+  const fromY = deckRect.top + deckRect.height / 2 - 62
+  const toX = handRect.left + handRect.width / 2 - 43
+  const toY = handRect.bottom - 130
+  return (
+    <motion.div
+      className="uno-flying-card uno-flying-card--back"
+      initial={{ x: fromX, y: fromY, scale: 1.12, opacity: 1, rotate: -8 }}
+      animate={{ x: toX, y: toY, scale: 0.88, opacity: 0.9, rotate: 0 }}
+      transition={{ duration: 0.42, ease: [0.22, 0.68, 0.35, 1] }}
+      onAnimationComplete={onComplete}
+    />
+  )
+})
+
 /** Card that "flies" from the hand to the discard pile */
 const FlyingCard = memo(function FlyingCard({ card, images, fromRect, discardRef, onComplete }: {
   card: UnoCard
@@ -322,6 +346,28 @@ function Uno() {
   // ── SFX: previous state ref for diff-based sound triggers ─────
   const prevStateRef = useRef<UnoClientState | null>(null)
 
+  // ── RAF coalesced state updates ────────────────────────────────
+  // Stores the latest incoming state; a single RAF per frame applies it.
+  // This prevents React render-backlog when the server emits states rapidly.
+  const latestStateRef = useRef<UnoClientState | null>(null)
+  const rafScheduledRef = useRef(false)
+
+  // ── DEV: measure time from state-receive to RAF (render) ───────
+  const devReceiveTimeRef = useRef<number>(0)
+
+  // ── Pending play card (optimistic visual removal from hand) ────
+  // Set on card click; card is filtered from visibleHand immediately.
+  // Cleared when server confirms (card gone from hand) or on ACK failure.
+  const [pendingPlayCardId, setPendingPlayCardId] = useState<string | null>(null)
+
+  // Saved rect for wild card flying animation (captured before modal opens)
+  const pendingWildFromRectRef = useRef<DOMRect | null>(null)
+
+  // ── Draw animation ─────────────────────────────────────────────
+  const [drawFlying, setDrawFlying] = useState(false)
+  const deckRef = useRef<HTMLDivElement>(null)
+  const handRef = useRef<HTMLDivElement>(null)
+
   /**
    * Apply a new UNO game state only if its version is newer than what we have.
    * If a version gap is detected, request a full resync.
@@ -357,7 +403,30 @@ function Uno() {
 
     lastVersionRef.current = incomingVersion
     logTTFC()
-    setState(incoming)
+
+    // ── Coalesce: only commit the latest state per animation frame ──────
+    // If multiple states arrive in the same frame (e.g. rapid server emits),
+    // we only call setState once with the freshest payload, preventing a
+    // React render backlog that shows as "client delay" even when the
+    // server has already moved on.
+    latestStateRef.current = incoming
+    if (IS_DEV) devReceiveTimeRef.current = performance.now()
+
+    if (!rafScheduledRef.current) {
+      rafScheduledRef.current = true
+      requestAnimationFrame(() => {
+        rafScheduledRef.current = false
+        const s = latestStateRef.current
+        if (s) {
+          latestStateRef.current = null
+          if (IS_DEV && devReceiveTimeRef.current > 0) {
+            const delay = performance.now() - devReceiveTimeRef.current
+            if (delay > 200) console.warn(`[uno:perf] Render delay: ${delay.toFixed(0)}ms (state→RAF)`)
+          }
+          setState(s)
+        }
+      })
+    }
   }, [])
 
   // Keep a stable ref to user id
@@ -393,6 +462,23 @@ function Uno() {
   }, [state, myHand, topCard, drawnPlayable])
 
   const hasAnyPlayable = playable.size > 0
+
+  // ── Visible hand: omit the pending-play card immediately on click ──────────
+  // This is purely visual — the card disappears from hand the instant the
+  // player clicks it, before the server round-trip completes.
+  const visibleHand = useMemo(
+    () => (pendingPlayCardId ? myHand.filter(c => c.id !== pendingPlayCardId) : myHand),
+    [myHand, pendingPlayCardId],
+  )
+
+  // Clear pendingPlayCardId once server confirms the card left the hand
+  useEffect(() => {
+    if (!pendingPlayCardId || !state) return
+    const hand = state.hands?.[uid] || []
+    if (!hand.some(c => c.id === pendingPlayCardId)) {
+      setPendingPlayCardId(null)
+    }
+  }, [state, pendingPlayCardId, uid])
 
   // ── SFX: state-diff effect — fires sounds based on game state transitions ──
   useEffect(() => {
@@ -553,7 +639,10 @@ function Uno() {
     }
   }, [lobbyCode, isLoggedIn, user?.id, applyState])
 
-  const sendAction = useCallback(async (action: { type: 'play'; cardId: string; chosenColor?: UnoColor } | { type: 'draw' } | { type: 'pass' }) => {
+  const sendAction = useCallback(async (
+    action: { type: 'play'; cardId: string; chosenColor?: UnoColor } | { type: 'draw' } | { type: 'pass' },
+    { onFailure }: { onFailure?: () => void } = {},
+  ) => {
     // In-flight guard: ignore if another action is already pending.
     if (!state || actionPendingRef.current) return
     actionPendingRef.current = true
@@ -562,11 +651,13 @@ function Uno() {
     try {
       const result = await unoSocket.sendAction(lobbyCodeSnapshot, action)
       if (!result.success) {
+        onFailure?.()
         setError(result.error || result.reason || 'Action failed')
         setTimeout(() => setError(null), 3000)
       }
     } catch (e: any) {
-      // Timeout / network drop — show one toast then auto-resync state.
+      // Timeout / network drop — restore any optimistic UI, show toast, resync.
+      onFailure?.()
       if (IS_DEV) console.warn('[uno:sendAction] timeout/error:', e?.message)
       setError('Connection issue — resyncing…')
       setTimeout(() => setError(null), 4000)
@@ -617,15 +708,14 @@ function Uno() {
     // Don't queue another action while one is already in-flight.
     if (actionPendingRef.current) return
 
-    // ── Wild cards: play sound then open colour picker ─────────────
-    if (c.face.kind === 'wild') {
-      sfx.play('wild_card')
-      setPendingWildCardId(c.id)
-      setColorModalOpen(true)
-      return
-    }
-    if (c.face.kind === 'wild4') {
-      sfx.play('card_punish') // Wild Draw-4 is a punishment card
+    // ── Wild cards: save rect, hide card immediately, open colour picker ───
+    if (c.face.kind === 'wild' || c.face.kind === 'wild4') {
+      sfx.play(c.face.kind === 'wild' ? 'wild_card' : 'card_punish')
+      // Capture position BEFORE the card disappears from the DOM
+      const cardEl = document.querySelector(`[data-card-id="${c.id}"]`)
+      pendingWildFromRectRef.current = cardEl?.getBoundingClientRect() ?? null
+      // Optimistic removal from hand — instantly hides the card
+      setPendingPlayCardId(c.id)
       setPendingWildCardId(c.id)
       setColorModalOpen(true)
       return
@@ -643,16 +733,36 @@ function Uno() {
       sfx.play('card_play_self')
     }
 
-    // Capture card position for flying animation
+    // Capture card position for flying animation BEFORE removing from DOM
     const cardEl = document.querySelector(`[data-card-id="${c.id}"]`)
     const fromRect = cardEl?.getBoundingClientRect()
+
+    // Optimistic removal: card disappears from hand immediately
+    setPendingPlayCardId(c.id)
     if (fromRect) setFlyingCard({ card: c, fromRect })
-    sendAction({ type: 'play', cardId: c.id })
+
+    sendAction({ type: 'play', cardId: c.id }, {
+      // On failure: restore card in hand
+      onFailure: () => setPendingPlayCardId(null),
+    })
   }
 
   const chooseWildColor = (color: UnoColor) => {
     if (!pendingWildCardId) return
-    sendAction({ type: 'play', cardId: pendingWildCardId, chosenColor: color })
+    const cardId = pendingWildCardId
+    const fromRect = pendingWildFromRectRef.current
+
+    // Start flying animation if we have a saved position
+    if (fromRect) {
+      const card = myHand.find(c => c.id === cardId)
+      if (card) setFlyingCard({ card, fromRect })
+    }
+    pendingWildFromRectRef.current = null
+
+    sendAction({ type: 'play', cardId, chosenColor: color }, {
+      // On failure: restore card in hand
+      onFailure: () => setPendingPlayCardId(null),
+    })
     setPendingWildCardId(null)
     setColorModalOpen(false)
   }
@@ -772,7 +882,7 @@ function Uno() {
               <WinCelebration show={!!celebration} effectId={celebration?.effectId || 'stars'} />
 
               <div className="uno-center">
-                <div className="uno-deck" aria-label="Draw deck">
+                <div className="uno-deck" ref={deckRef} aria-label="Draw deck">
                   <div className="uno-deck__stack" />
                   <div className="uno-deck__count">{state.drawPileCount}</div>
                 </div>
@@ -923,7 +1033,11 @@ function Uno() {
                   className="btn-primary uno-actions__btn"
                   onClick={() => {
                     sfx.play('draw')
-                    sendAction({ type: 'draw' })
+                    // Start the flying animation immediately — don't wait for ACK
+                    setDrawFlying(true)
+                    sendAction({ type: 'draw' }, {
+                      onFailure: () => setDrawFlying(false),
+                    })
                   }}
                   disabled={hasAnyPlayable || actionPending}
                 >
@@ -950,10 +1064,10 @@ function Uno() {
           </div>
           )}
 
-          {!isSpectator && <div className="uno-hand" aria-label="Your hand">
+          {!isSpectator && <div className="uno-hand" ref={handRef} aria-label="Your hand">
             <div className="uno-hand__fan">
-              {myHand.map((c, i) => {
-                const n = myHand.length
+              {visibleHand.map((c, i) => {
+                const n = visibleHand.length
                 const gap = n <= 5 ? 44 : n <= 9 ? 34 : 26
                 const rotStep = n <= 5 ? 7 : n <= 9 ? 4.5 : 3
                 const center = (n - 1) / 2
@@ -1049,7 +1163,13 @@ function Uno() {
 
       <Modal
         isOpen={colorModalOpen}
-        onClose={() => { setColorModalOpen(false); setPendingWildCardId(null) }}
+        onClose={() => {
+          setColorModalOpen(false)
+          setPendingWildCardId(null)
+          // User cancelled — restore the card in hand
+          setPendingPlayCardId(null)
+          pendingWildFromRectRef.current = null
+        }}
         title="Choose a Color"
       >
         <div className="uno-color-picker">
@@ -1071,6 +1191,15 @@ function Uno() {
             setShowImpact(true)
             setTimeout(() => setShowImpact(false), 280)
           }}
+        />
+      )}
+
+      {/* Draw animation: card back flies from deck to hand */}
+      {drawFlying && deckRef.current && handRef.current && (
+        <FlyingDrawCard
+          deckRef={deckRef}
+          handRef={handRef}
+          onComplete={() => setDrawFlying(false)}
         />
       )}
     </div>
