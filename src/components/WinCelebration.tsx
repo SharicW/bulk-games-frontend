@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useMemo } from 'react'
 
-type CelebrationEffectId = 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'sakura_petals'
+type CelebrationEffectId = 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'sakura_petals' | 'gold_stars' | 'rainbow_burst'
 
 interface Particle {
   id: number; x: number; y: number; size: number; color: string
@@ -9,6 +9,8 @@ interface Particle {
 }
 
 const STAR_COLORS = ['#ffd700', '#ffec8b', '#fff8dc', '#fffacd', '#f0e68c', '#ffa500', '#fff']
+const GOLD_COLORS = ['#ffd700', '#ffb300', '#ffe066', '#ffc200', '#fff3a0', '#ffaa00']
+const RAINBOW_COLORS = ['#ff4e50', '#fc913a', '#f9d423', '#4ade80', '#38bdf8', '#a78bfa', '#f472b6']
 const REDS = ['#ff3b3b', '#ff5a5a', '#ff7a7a', '#ff2d55', '#ff453a']
 const FIRE = ['#ff7a18', '#ff4d00', '#ff2d55', '#ffd27a']
 const SAKURA = ['#ffd1e8', '#ffb6d5', '#ff8fc1', '#ffc2dc']
@@ -28,6 +30,8 @@ function conf(effectId: CelebrationEffectId): {
   }
   if (effectId === 'red_hearts') return { kind: 'glyph', char: '♥', count: 18, duration: 2.6, color: (i) => REDS[i % REDS.length] }
   if (effectId === 'black_hearts') return { kind: 'glyph', char: '♥', count: 18, duration: 2.6, color: () => '#111' }
+  if (effectId === 'gold_stars') return { kind: 'glyph', char: '★', count: 24, duration: 2.8, color: (i) => GOLD_COLORS[i % GOLD_COLORS.length] }
+  if (effectId === 'rainbow_burst') return { kind: 'dot', count: 40, duration: 2.8, color: (i) => RAINBOW_COLORS[i % RAINBOW_COLORS.length] }
   return { kind: 'glyph', char: '★', count: 20, duration: 2.6, color: (i) => STAR_COLORS[i % STAR_COLORS.length] }
 }
 
