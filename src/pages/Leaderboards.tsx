@@ -158,7 +158,7 @@ function Leaderboards() {
                   )}
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 650, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.nickname}</div>
-                    <div className="muted" style={{ fontSize: '12px' }}>Wins: {fmt(r.wins)} • Coins: {fmt(r.coins)}</div>
+                    <div className="muted" style={{ fontSize: '12px' }}>Wins: {fmt(r.wins)} | Coins: {fmt(r.coins)}</div>
                   </div>
                 </div>
                 <div style={{ textAlign: 'right', fontWeight: 800 }}>
