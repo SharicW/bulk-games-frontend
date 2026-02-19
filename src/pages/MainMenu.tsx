@@ -185,7 +185,7 @@ function MainMenu() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'baseline' }}>
                     <div style={{ fontWeight: 800 }}>Poker Room {i + 1}</div>
                     <div className="muted" style={{ fontSize: '12px' }}>
-                      {r ? `${r.playerCount}/${r.maxPlayers}` : '—'}
+                      {r ? `${r.playerCount}/${r.maxPlayers}` : '-'}
                     </div>
                   </div>
                   <div className="muted" style={{ fontSize: '13px' }}>
@@ -210,7 +210,7 @@ function MainMenu() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'baseline' }}>
                     <div style={{ fontWeight: 800 }}>UNO Room {i + 1}</div>
                     <div className="muted" style={{ fontSize: '12px' }}>
-                      {r ? `${r.playerCount}/${r.maxPlayers}` : '—'}
+                      {r ? `${r.playerCount}/${r.maxPlayers}` : '-'}
                     </div>
                   </div>
                   <div className="muted" style={{ fontSize: '13px' }}>
