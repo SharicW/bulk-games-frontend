@@ -258,8 +258,9 @@ const UnoCardImg = memo(function UnoCardImg({ card, images, className, dimmed, g
 
 /** Card that "flies" from the deck to the player's hand on Draw.
  *  Shows the drawer the real card face; opponents see a card back (or nothing).
- *  Holds briefly at the destination if the server ACK hasn't arrived yet
- *  (covers Railway round-trips of ~100-400ms on a 680ms animation). */
+ *  drawnCard is always set before the component mounts in the normal flow
+ *  (animation only starts after ACK delivers the real card).
+ *  Falls back to card-back display for the rare case where ACK has no drawnCard. */
 const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, drawnCard, images, onComplete }: {
   deckRef: React.RefObject<HTMLDivElement | null>
   handRef: React.RefObject<HTMLDivElement | null>
@@ -285,13 +286,17 @@ const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, drawnCar
   const onCompleteRef = useRef(onComplete)
   onCompleteRef.current = onComplete
 
+  // Track whether the card face was known when this component first mounted.
+  // When true: render face immediately with no cross-fade from the card back.
+  const cardKnownAtMountRef = useRef(drawnCard !== null)
+
   // motionDone: true once Framer Motion finishes the fly animation
   const [motionDone, setMotionDone] = useState(false)
   // holdTimerRef: timeout that fires onComplete when waiting for ACK
   const holdTimerRef = useRef<number | null>(null)
 
-  // After motion completes: if card already known → brief reveal then done;
-  // otherwise hold up to 650ms for the ACK, then done regardless.
+  // After motion completes: if card already known → brief display then done;
+  // otherwise hold up to 650ms for the state-broadcast fallback, then done.
   useEffect(() => {
     if (!motionDone) return
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current)
@@ -303,8 +308,8 @@ const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, drawnCar
     return () => { if (holdTimerRef.current) clearTimeout(holdTimerRef.current) }
   }, [motionDone]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // If ACK arrives WHILE we're holding (motionDone but waiting), cancel the
-  // long-wait timer and replace with a short reveal timer instead.
+  // If card face arrives while holding (state-broadcast fallback path only),
+  // cancel the long-wait timer and replace with the short reveal timer.
   useEffect(() => {
     if (!motionDone || !drawnCard) return
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current)
@@ -312,12 +317,18 @@ const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, drawnCar
     return () => { if (holdTimerRef.current) clearTimeout(holdTimerRef.current) }
   }, [drawnCard, motionDone])
 
-  // Resolve card image when we know the drawn card
+  // Resolve card image from the same asset map used by hand cards
   const cardSrc = drawnCard ? (() => {
     const fId = faceId(drawnCard.face)
     const variants = images[fId] || []
     return variants.length ? variants[Math.abs(hashStr(drawnCard.id)) % variants.length] : null
   })() : null
+
+  // When the card face is known at mount, skip transitions so the face renders
+  // immediately with no cross-fade flash from the card-back placeholder.
+  const backInitialOpacity = cardKnownAtMountRef.current ? 0 : 1
+  const faceInitialOpacity = cardKnownAtMountRef.current ? 1 : 0
+  const faceTransitionDuration = cardKnownAtMountRef.current ? 0 : 0.16
 
   return (
     <motion.div
@@ -327,22 +338,23 @@ const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, drawnCar
       transition={{ duration: 0.68, ease: [0.22, 0.68, 0.35, 1] }}
       onAnimationComplete={() => setMotionDone(true)}
     >
-      {/* Deck-style card back — fades out when real card face is revealed */}
+      {/* Card back — hidden from the start when real face is known at mount */}
       <motion.div
         className="uno-draw-back"
+        initial={{ opacity: backInitialOpacity }}
         animate={{ opacity: cardSrc ? 0 : 1 }}
         transition={{ duration: 0.14 }}
       />
-      {/* Real card face (drawer only) — fades in once ACK delivers drawnCard */}
+      {/* Real card face — visible immediately when known at mount, fades in otherwise */}
       {cardSrc && (
         <motion.img
           src={cardSrc}
           alt=""
           draggable={false}
           className="uno-draw-face"
-          initial={{ opacity: 0 }}
+          initial={{ opacity: faceInitialOpacity }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.16 }}
+          transition={{ duration: faceTransitionDuration }}
         />
       )}
     </motion.div>
@@ -1200,35 +1212,39 @@ function Uno() {
                     // Snapshot current hand IDs for fallback state-based detection
                     const snap = new Set(myHand.map((c: UnoCard) => c.id))
                     pendingDrawSnapRef.current = snap
-                    // Start the flying animation immediately — don't wait for server
-                    setDrawFlying({ drawnCard: null })
+                    // Do NOT start the flying animation yet — wait for ACK so the
+                    // real card face is known before the card starts flying.
+                    // This prevents any purple/back placeholder from appearing.
                     sendAction({ type: 'draw' }, {
                       onFailure: () => {
-                        setDrawFlying(null)
+                        // Action failed — clear snapshot, no animation started
                         pendingDrawSnapRef.current = null
                       },
                       onAck: (result) => {
-                        // PRIMARY path: server now sends drawnCard directly in ACK
+                        // PRIMARY: ACK includes drawnCard → start flight with real face immediately
                         if (result?.drawnCard) {
                           pendingDrawSnapRef.current = null
-                          setDrawFlying(prev => prev !== null ? { drawnCard: result.drawnCard as UnoCard } : null)
+                          setDrawFlying({ drawnCard: result.drawnCard as UnoCard })
                           return
                         }
-                        // FALLBACK: diff the hand from ACK gameState
-                        if (!result?.gameState || !pendingDrawSnapRef.current) return
-                        const myPid = state.myPlayerId
-                        const newHand: UnoCard[] =
-                          result.gameState.hands?.[myPid] ??
-                          result.gameState.hands?.[String(myPid)] ??
-                          []
-                        const newCard = newHand.find(
-                          (c: UnoCard) => !snap.has(c.id),
-                        )
-                        if (newCard) {
-                          pendingDrawSnapRef.current = null
-                          setDrawFlying(prev => prev !== null ? { drawnCard: newCard } : null)
+                        // FALLBACK A: diff the hand from ACK gameState
+                        if (result?.gameState && pendingDrawSnapRef.current) {
+                          const myPid = state.myPlayerId
+                          const newHand: UnoCard[] =
+                            result.gameState.hands?.[myPid] ??
+                            result.gameState.hands?.[String(myPid)] ??
+                            []
+                          const newCard = newHand.find((c: UnoCard) => !snap.has(c.id))
+                          if (newCard) {
+                            pendingDrawSnapRef.current = null
+                            setDrawFlying({ drawnCard: newCard })
+                            return
+                          }
                         }
-                        // If not found here, the state-broadcast useEffect will catch it
+                        // FALLBACK B: card face unknown — start with card back;
+                        // the state-broadcast useEffect will reveal face when state arrives.
+                        // Still better than purple placeholder: shows UNO card back instead.
+                        setDrawFlying({ drawnCard: null })
                       },
                     })
                   }}
