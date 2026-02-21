@@ -679,17 +679,41 @@ function Uno() {
     }
 
     let stopped = false
+    // Prevents the connect-event listener from firing join() during the
+    // initial connectAndJoin flow — only reconnects should use it.
+    let initialJoinDone = false
+    // In-flight guard: prevents concurrent join requests (e.g. rapid reconnects)
+    let joinInFlight = false
 
     const join = async () => {
-      const result = await unoSocket.joinLobby(lobbyCode)
-      if (stopped) return
-      if (result.success && result.gameState) {
-        lastVersionRef.current = result.gameState.version ?? 0
-        setState(result.gameState)
-        logTTFC()
-        setError(null)
-      } else {
-        setError(result.error || 'Failed to join lobby')
+      if (joinInFlight) {
+        if (IS_DEV) console.log('[uno:join] skipped — already in-flight')
+        return
+      }
+      joinInFlight = true
+      try {
+        const result = await unoSocket.joinLobby(lobbyCode)
+        if (stopped) return
+        if (result.success && result.gameState) {
+          const v = result.gameState.version ?? 0
+          // Use Math.max so a slow ACK never downgrades the tracked version
+          lastVersionRef.current = Math.max(lastVersionRef.current, v)
+          // Clear any pending RAF payload so it doesn't overwrite this newer state
+          latestStateRef.current = null
+          setState(result.gameState)
+          logTTFC()
+          setError(null)
+        } else {
+          setError(result.error || 'Failed to join lobby')
+        }
+      } catch (err: any) {
+        if (!stopped) {
+          console.warn('[uno:join] error:', err?.message || err)
+          setError('Failed to join lobby — retrying…')
+          setTimeout(() => { if (!stopped) setError(null) }, 4000)
+        }
+      } finally {
+        joinInFlight = false
       }
     }
 
@@ -698,6 +722,9 @@ function Uno() {
         await unoSocket.connect()
         if (stopped) return
         setConnected(true)
+        // Mark initial join done BEFORE calling join so subsequent
+        // connect events (reconnects) also trigger rejoin.
+        initialJoinDone = true
         await join()
       } catch (err) {
         if (!stopped) setError('Failed to connect to server')
@@ -739,10 +766,16 @@ function Uno() {
       setError('Lobby has been closed by the host')
     })
 
+    // Reconnect handler: only fires for RECONNECTS (not the initial connect).
+    // The initialJoinDone flag prevents a double-join on first mount,
+    // where connectAndJoin already handles the initial join.
     const unsubscribeConnect = unoSocket.on('connect', () => {
-      if (!stopped && lobbyCode) join().catch(err => {
-        if (!stopped) console.warn('[uno:reconnect] join failed:', err?.message || err)
-      })
+      if (!stopped && lobbyCode && initialJoinDone) {
+        if (IS_DEV) console.log('[uno:reconnect] socket reconnected, rejoining…')
+        join().catch(err => {
+          if (!stopped) console.warn('[uno:reconnect] join failed:', err?.message || err)
+        })
+      }
     })
 
     // Opponent draw animation: another player drew a card (no card face)
@@ -1164,7 +1197,7 @@ function Uno() {
                     // Guard: don't start if sendAction will bail out early
                     if (!state || actionPendingRef.current) return
                     sfx.play('draw')
-                    // Snapshot current hand IDs for both state-based and ACK-based detection
+                    // Snapshot current hand IDs for fallback state-based detection
                     const snap = new Set(myHand.map((c: UnoCard) => c.id))
                     pendingDrawSnapRef.current = snap
                     // Start the flying animation immediately — don't wait for server
@@ -1174,9 +1207,14 @@ function Uno() {
                         setDrawFlying(null)
                         pendingDrawSnapRef.current = null
                       },
-                      // ACK fast-path: server returns updated gameState in the ACK
-                      // before the broadcast arrives, so we can reveal the card sooner.
                       onAck: (result) => {
+                        // PRIMARY path: server now sends drawnCard directly in ACK
+                        if (result?.drawnCard) {
+                          pendingDrawSnapRef.current = null
+                          setDrawFlying(prev => prev !== null ? { drawnCard: result.drawnCard as UnoCard } : null)
+                          return
+                        }
+                        // FALLBACK: diff the hand from ACK gameState
                         if (!result?.gameState || !pendingDrawSnapRef.current) return
                         const myPid = state.myPlayerId
                         const newHand: UnoCard[] =
