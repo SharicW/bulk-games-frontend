@@ -33,6 +33,8 @@ export interface ActionAck {
   version?: number
   gameState?: any
   error?: string
+  /** UNO only: the real drawn card (sent only to the drawer, never broadcast) */
+  drawnCard?: any
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
