@@ -295,25 +295,26 @@ const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, drawnCar
   // holdTimerRef: timeout that fires onComplete when waiting for ACK
   const holdTimerRef = useRef<number | null>(null)
 
-  // After motion completes: if card already known → brief display then done;
-  // otherwise hold up to 650ms for the state-broadcast fallback, then done.
+  // After motion completes: dismiss quickly so the hand card reveal is seamless.
+  // 60ms is just enough for the browser to paint the final frame before unmount.
+  // Fallback (drawnCard null): hold up to 280ms for state-broadcast, then dismiss.
   useEffect(() => {
     if (!motionDone) return
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current)
     if (drawnCard) {
-      holdTimerRef.current = window.setTimeout(() => onCompleteRef.current(), 320)
+      holdTimerRef.current = window.setTimeout(() => onCompleteRef.current(), 60)
     } else {
-      holdTimerRef.current = window.setTimeout(() => onCompleteRef.current(), 650)
+      holdTimerRef.current = window.setTimeout(() => onCompleteRef.current(), 280)
     }
     return () => { if (holdTimerRef.current) clearTimeout(holdTimerRef.current) }
   }, [motionDone]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // If card face arrives while holding (state-broadcast fallback path only),
-  // cancel the long-wait timer and replace with the short reveal timer.
+  // cancel the long-wait timer and replace with the quick dismiss timer.
   useEffect(() => {
     if (!motionDone || !drawnCard) return
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current)
-    holdTimerRef.current = window.setTimeout(() => onCompleteRef.current(), 320)
+    holdTimerRef.current = window.setTimeout(() => onCompleteRef.current(), 60)
     return () => { if (holdTimerRef.current) clearTimeout(holdTimerRef.current) }
   }, [drawnCard, motionDone])
 
@@ -335,7 +336,7 @@ const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, drawnCar
       className="uno-flying-card"
       initial={{ x: fromX, y: fromY, scale: 1.12, opacity: 1, rotate: -8 }}
       animate={{ x: toX, y: toY, scale: 0.88, opacity: 0.9, rotate: 0 }}
-      transition={{ duration: 0.68, ease: [0.22, 0.68, 0.35, 1] }}
+      transition={{ duration: 0.34, ease: [0.22, 0.68, 0.35, 1] }}
       onAnimationComplete={() => setMotionDone(true)}
     >
       {/* Card back — hidden from the start when real face is known at mount */}
@@ -575,13 +576,19 @@ function Uno() {
 
   const hasAnyPlayable = playable.size > 0
 
-  // ── Visible hand: omit the pending-play card immediately on click ──────────
-  // This is purely visual — the card disappears from hand the instant the
-  // player clicks it, before the server round-trip completes.
-  const visibleHand = useMemo(
-    () => (pendingPlayCardId ? myHand.filter(c => c.id !== pendingPlayCardId) : myHand),
-    [myHand, pendingPlayCardId],
-  )
+  // ── Visible hand: omit cards that are currently animated as overlays ───────
+  // 1. pendingPlayCardId: card being played (flies from hand → discard pile)
+  // 2. drawFlying.drawnCard: card being drawn (flies from deck → hand)
+  //    Filtering it while the animation runs prevents the card from appearing
+  //    in both the flying overlay and the hand simultaneously (duplicate bug).
+  //    When the animation completes, setDrawFlying(null) lifts the filter and
+  //    the card appears in hand seamlessly in the same React render cycle.
+  const visibleHand = useMemo(() => {
+    let hand = myHand
+    if (pendingPlayCardId) hand = hand.filter(c => c.id !== pendingPlayCardId)
+    if (drawFlying?.drawnCard) hand = hand.filter(c => c.id !== drawFlying.drawnCard!.id)
+    return hand
+  }, [myHand, pendingPlayCardId, drawFlying])
 
   // Clear pendingPlayCardId once server confirms the card left the hand
   useEffect(() => {
