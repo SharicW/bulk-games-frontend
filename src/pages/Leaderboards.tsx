@@ -116,9 +116,14 @@ function Leaderboards() {
             <span className="muted" style={{ fontSize: '12px' }}>Rank: #{fmt(meCoins?.rank)}</span>
           </div>
           <div className="shop-equipped" style={{ minWidth: 220 }}>
-            <span className="muted" style={{ fontSize: '12px', textTransform: 'uppercase' }}>Wins</span>
+            <span className="muted" style={{ fontSize: '12px', textTransform: 'uppercase' }}>Total Wins</span>
             <span style={{ fontWeight: 700, fontSize: '18px' }}>{fmt(meWins?.wins)}</span>
             <span className="muted" style={{ fontSize: '12px' }}>Rank: #{fmt(meWins?.rank)}</span>
+          </div>
+          <div className="shop-equipped" style={{ minWidth: 220 }}>
+            <span className="muted" style={{ fontSize: '12px', textTransform: 'uppercase' }}>UNO Wins</span>
+            <span style={{ fontWeight: 700, fontSize: '18px' }}>{fmt(meWins?.unoWins)}</span>
+            <span className="muted" style={{ fontSize: '12px' }}>Poker Wins: {fmt(meWins?.pokerWins)}</span>
           </div>
           <div className="shop-equipped" style={{ minWidth: 220 }}>
             <span className="muted" style={{ fontSize: '12px', textTransform: 'uppercase' }}>Sorted by</span>
@@ -159,6 +164,9 @@ function Leaderboards() {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 650, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.nickname}</div>
                     <div className="muted" style={{ fontSize: '12px' }}>Wins: {fmt(r.wins)} | Coins: {fmt(r.coins)}</div>
+                    {by === 'wins' && (
+                      <div className="muted" style={{ fontSize: '11px', opacity: 0.75 }}>UNO: {fmt(r.unoWins ?? 0)} | Poker: {fmt(r.pokerWins ?? 0)}</div>
+                    )}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right', fontWeight: 800 }}>
