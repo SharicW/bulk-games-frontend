@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useMemo } from 'react'
 
-type CelebrationEffectId = 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'sakura_petals' | 'gold_stars' | 'rainbow_burst'
+type CelebrationEffectId = 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'water_burst' | 'sakura_petals' | 'gold_stars' | 'rainbow_burst'
 
 interface Particle {
   id: number; x: number; y: number; size: number; color: string
@@ -14,6 +14,7 @@ const RAINBOW_COLORS = ['#ff4e50', '#fc913a', '#f9d423', '#4ade80', '#38bdf8', '
 const REDS = ['#ff3b3b', '#ff5a5a', '#ff7a7a', '#ff2d55', '#ff453a']
 const FIRE = ['#ff7a18', '#ff4d00', '#ff2d55', '#ffd27a']
 const SAKURA = ['#ffd1e8', '#ffb6d5', '#ff8fc1', '#ffc2dc']
+const WATER = ['#00bfff', '#1e90ff', '#00cfef', '#38bdf8', '#0ea5e9', '#87ceeb', '#22d3ee']
 
 function conf(effectId: CelebrationEffectId): {
   kind: 'glyph' | 'dot'
@@ -24,6 +25,9 @@ function conf(effectId: CelebrationEffectId): {
 } {
   if (effectId === 'fire_burst') {
     return { kind: 'dot', count: 36, duration: 3.0, color: (i) => FIRE[i % FIRE.length] }
+  }
+  if (effectId === 'water_burst') {
+    return { kind: 'dot', count: 42, duration: 3.4, color: (i) => WATER[i % WATER.length] }
   }
   if (effectId === 'sakura_petals') {
     return { kind: 'glyph', char: '❀', count: 18, duration: 3.2, color: (i) => SAKURA[i % SAKURA.length] }
@@ -42,33 +46,41 @@ export default function WinCelebration({ show, effectId = 'stars' }: { show: boo
       Array.from({ length: c.count }, (_, i) => ({
         id: i,
         x:
-          effectId === 'fire_burst'
+          effectId === 'fire_burst' || effectId === 'water_burst'
             ? 8 + Math.random() * 84
             : 10 + Math.random() * 80,
         y:
           effectId === 'fire_burst'
             ? 30 + Math.random() * 55
-            : effectId === 'sakura_petals'
-              ? -8 - Math.random() * 14
-              : 12 + Math.random() * 70,
+            : effectId === 'water_burst'
+              ? 35 + Math.random() * 45
+              : effectId === 'sakura_petals'
+                ? -8 - Math.random() * 14
+                : 12 + Math.random() * 70,
         size:
           effectId === 'fire_burst'
             ? 5 + Math.random() * 9
-            : 14 + Math.random() * 18,
+            : effectId === 'water_burst'
+              ? 6 + Math.random() * 11
+              : 14 + Math.random() * 18,
         color: c.color(i),
-        delay: Math.random() * (effectId === 'fire_burst' ? 0.5 : 0.55),
+        delay: Math.random() * (effectId === 'fire_burst' || effectId === 'water_burst' ? 0.5 : 0.55),
         dx:
           effectId === 'fire_burst'
             ? (Math.random() - 0.5) * 120
-            : effectId === 'sakura_petals'
-              ? (Math.random() - 0.5) * 180
-              : (Math.random() - 0.5) * 210,
+            : effectId === 'water_burst'
+              ? (Math.random() - 0.5) * 320
+              : effectId === 'sakura_petals'
+                ? (Math.random() - 0.5) * 180
+                : (Math.random() - 0.5) * 210,
         dy:
           effectId === 'fire_burst'
             ? -(50 + Math.random() * 200)
-            : effectId === 'sakura_petals'
-              ? 420 + Math.random() * 220
-              : -(60 + Math.random() * 170),
+            : effectId === 'water_burst'
+              ? (Math.random() - 0.35) * 300
+              : effectId === 'sakura_petals'
+                ? 420 + Math.random() * 220
+                : -(60 + Math.random() * 170),
         rotate: Math.random() * 540 - 270,
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
