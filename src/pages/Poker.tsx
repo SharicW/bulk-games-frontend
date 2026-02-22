@@ -366,7 +366,7 @@ function Poker() {
   const [maxTime, setMaxTime] = useState(30)
 
   // ── Celebration (server-driven; visible to everyone) ───────────
-  const [celebration, setCelebration] = useState<null | { id: string; effectId: 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'sakura_petals' }>(null)
+  const [celebration, setCelebration] = useState<null | { id: string; effectId: 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'water_burst' | 'sakura_petals' | 'gold_stars' | 'rainbow_burst' }>(null)
   const celebrationTimerRef = useRef<number | null>(null)
   
   const timerRef = useRef<number | null>(null)
@@ -541,7 +541,7 @@ function Poker() {
     const unsubscribeCelebration = pokerSocket.on('game:celebration', (payload) => {
       const p = payload as any
       const id = String(p?.id || '')
-      const effectId = (p?.effectId || 'stars') as 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'sakura_petals'
+      const effectId = (p?.effectId || 'stars') as 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'water_burst' | 'sakura_petals' | 'gold_stars' | 'rainbow_burst'
       if (!id) return
       if (IS_DEV) console.log(`[poker:celebration] id=${id} effect=${effectId}`)
       setCelebration({ id, effectId })
