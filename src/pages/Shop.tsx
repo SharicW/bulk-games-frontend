@@ -31,6 +31,15 @@ function EffectPreview({ effectId }: { effectId: string }) {
       </div>
     )
   }
+  if (effectId === 'effect_water_burst') {
+    return (
+      <div className="effect-preview effect-preview--water">
+        {[0, 1, 2, 3, 4, 5].map(i => (
+          <span key={i} className="effect-preview__dot" style={{ animationDelay: `${i * 0.18}s` }} />
+        ))}
+      </div>
+    )
+  }
   if (effectId === 'effect_sakura_petals') {
     return (
       <div className="effect-preview effect-preview--sakura">
