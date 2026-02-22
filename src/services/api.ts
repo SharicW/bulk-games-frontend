@@ -160,6 +160,8 @@ export interface LeaderboardRow {
   avatarUrl: string | null;
   coins: number;
   wins: number;
+  unoWins: number;
+  pokerWins: number;
 }
 
 export async function apiGetLeaderboard(by: LeaderboardBy, limit = 10): Promise<{ by: LeaderboardBy; limit: number; rows: LeaderboardRow[] }> {
