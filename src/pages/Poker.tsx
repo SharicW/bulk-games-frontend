@@ -391,9 +391,11 @@ function Poker() {
     const incomingVersion = incoming.version ?? 0
     const lastVersion = lastVersionRef.current
 
-    // Ignore stale states
-    if (incomingVersion > 0 && lastVersion > 0 && incomingVersion <= lastVersion) {
-      if (IS_DEV) console.log(`[poker:sync] Ignored stale state v${incomingVersion} <= v${lastVersion}`)
+    // Ignore strictly-older states.
+    // Use strict less-than (<) so same-version re-broadcasts (e.g. from the
+    // server re-broadcasting after a mobile reconnect) are still applied.
+    if (incomingVersion > 0 && lastVersion > 0 && incomingVersion < lastVersion) {
+      if (IS_DEV) console.log(`[poker:sync] Ignored stale state v${incomingVersion} < v${lastVersion}`)
       return
     }
 
@@ -596,6 +598,31 @@ function Poker() {
         })
       }
     })
+
+    // ── Page-visibility restore (mobile: tab returns from background) ──
+    // iOS/Android silently kills WebSockets when the tab is backgrounded.
+    // The server keeps thinking the old socket is alive for ~50 s (ping timeout).
+    // When the user returns to the tab:
+    //   • If the socket auto-reconnected:  the 'connect' handler above already
+    //     triggered join() so nothing extra is needed here.
+    //   • If the socket still APPEARS connected (client hasn't detected the
+    //     stale connection yet): we request a fresh state to avoid being stuck
+    //     on stale data.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible' || stopped || !lobbyCode) return
+      if (pokerSocket.isConnected()) {
+        if (IS_DEV) console.log('[poker:visibility] tab visible, requesting state resync')
+        pokerSocket.requestState(lobbyCode).then(res => {
+          if (!stopped && res.success && res.gameState) {
+            // Force-apply even if version == lastVersion (we might have missed updates)
+            lastVersionRef.current = 0
+            applyState(res.gameState)
+          }
+        }).catch(() => { /* ignore — socket will reconnect on its own */ })
+      }
+      // If not connected: socket.io auto-reconnect + 'connect' handler handles it
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     
     return () => {
       stopped = true
@@ -603,6 +630,7 @@ function Poker() {
       unsubscribeCelebration()
       unsubscribeEnd()
       unsubscribeConnect()
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (timerRef.current) clearInterval(timerRef.current)
       if (showdownTimeoutRef.current) clearTimeout(showdownTimeoutRef.current)
       if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
