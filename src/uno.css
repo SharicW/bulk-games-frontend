@@ -739,3 +739,173 @@
   pointer-events: none;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   UNO CARD ASPECT RATIO + MOBILE PHONE IMPROVEMENTS
+   Card PNG source: 500x726 (same ratio as poker cards)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Enforce card aspect ratio (500:726) on UNO cards ─────────── */
+.uno-card {
+  height: auto;
+  aspect-ratio: 500 / 726;
+}
+
+.uno-flying-card {
+  height: auto;
+  aspect-ratio: 500 / 726;
+}
+
+/* Override 768px rule to use aspect-ratio instead of fixed height */
+@media (max-width: 768px) {
+  .uno-card {
+    width: 76px;
+    height: auto;
+    aspect-ratio: 500 / 726;
+  }
+}
+
+/* ── Phone portrait <= 430px (iPhone 12 Pro Max / 14 Plus / 15 Plus) */
+@media (max-width: 430px) {
+
+  /* Cards: 58px wide => height ~84px (500:726 ratio) */
+  .uno-card {
+    width: 58px;
+    height: auto;
+    aspect-ratio: 500 / 726;
+    border-radius: 9px;
+  }
+
+  .uno-flying-card {
+    width: 58px;
+    height: auto;
+    aspect-ratio: 500 / 726;
+  }
+
+  /* Hand area */
+  .uno-hand {
+    min-height: 108px;
+    padding: 4px 8px 10px;
+  }
+
+  .uno-hand__fan {
+    height: 98px;
+  }
+
+  /* Deck + discard containers (containers not images) */
+  .uno-deck {
+    width: clamp(52px, 7.5vw, 70px);
+    height: auto;
+    aspect-ratio: 500 / 726;
+  }
+
+  .uno-discard {
+    width: clamp(52px, 7.5vw, 70px);
+    height: auto;
+    aspect-ratio: 500 / 726;
+  }
+
+  /* Action status: allow shrinking so buttons don't overflow */
+  .uno-actions__status {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .uno-actions {
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .uno-actions__btn {
+    min-width: 90px !important;
+    padding: 9px 12px !important;
+    font-size: 12px !important;
+  }
+
+  .uno-actions__buttons {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Log collapse */
+  .uno-log {
+    max-height: 100px;
+  }
+
+  /* Header tighten */
+  .uno-header {
+    padding: 6px 10px;
+    gap: 6px;
+  }
+
+  .uno-header__code {
+    font-size: 12px;
+  }
+}
+
+/* ── Narrowest phones <= 390px (iPhone X/XS/11 Pro/12 mini/13 mini) */
+@media (max-width: 390px) {
+
+  /* Cards: 54px wide => height ~78px */
+  .uno-card {
+    width: 54px;
+    height: auto;
+    aspect-ratio: 500 / 726;
+    border-radius: 8px;
+  }
+
+  .uno-flying-card {
+    width: 54px;
+    height: auto;
+    aspect-ratio: 500 / 726;
+  }
+
+  /* Hand area */
+  .uno-hand {
+    min-height: 100px;
+    padding: 4px 6px 10px;
+  }
+
+  .uno-hand__fan {
+    height: 90px;
+  }
+
+  /* Deck + discard */
+  .uno-deck {
+    width: clamp(48px, 7vw, 60px);
+    height: auto;
+    aspect-ratio: 500 / 726;
+  }
+
+  .uno-discard {
+    width: clamp(48px, 7vw, 60px);
+    height: auto;
+    aspect-ratio: 500 / 726;
+  }
+
+  /* Tighter center gap */
+  .uno-center {
+    gap: clamp(8px, 1.5vw, 14px);
+  }
+
+  /* Actions */
+  .uno-actions__btn {
+    min-width: 80px !important;
+    padding: 8px 10px !important;
+    font-size: 12px !important;
+  }
+
+  /* Table wrapper padding — maximise visible table */
+  .uno-table-wrapper {
+    padding: 20px;
+  }
+}
+
+/* ── Suppress hover effects on touch devices ──────────────────── */
+@media (hover: none) {
+  .uno-card:hover {
+    transform: none !important;
+    filter: none !important;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.35) !important;
+  }
+}
+
