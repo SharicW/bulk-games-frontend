@@ -109,23 +109,23 @@ function Leaderboards() {
 
       <div className="card" style={{ marginBottom: '16px' }}>
         <h3 style={{ margin: '0 0 12px', fontSize: '16px', fontWeight: 600 }}>Your stats / Your rank</h3>
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-          <div className="shop-equipped" style={{ minWidth: 220 }}>
+        <div className="leaderboard-stats-grid">
+          <div className="shop-equipped">
             <span className="muted" style={{ fontSize: '12px', textTransform: 'uppercase' }}>Coins</span>
             <span style={{ fontWeight: 700, fontSize: '18px' }}>{fmt(meCoins?.coins)}</span>
             <span className="muted" style={{ fontSize: '12px' }}>Rank: #{fmt(meCoins?.rank)}</span>
           </div>
-          <div className="shop-equipped" style={{ minWidth: 220 }}>
+          <div className="shop-equipped">
             <span className="muted" style={{ fontSize: '12px', textTransform: 'uppercase' }}>Total Wins</span>
             <span style={{ fontWeight: 700, fontSize: '18px' }}>{fmt(meWins?.wins)}</span>
             <span className="muted" style={{ fontSize: '12px' }}>Rank: #{fmt(meWins?.rank)}</span>
           </div>
-          <div className="shop-equipped" style={{ minWidth: 220 }}>
+          <div className="shop-equipped">
             <span className="muted" style={{ fontSize: '12px', textTransform: 'uppercase' }}>UNO Wins</span>
             <span style={{ fontWeight: 700, fontSize: '18px' }}>{fmt(meWins?.unoWins)}</span>
             <span className="muted" style={{ fontSize: '12px' }}>Poker Wins: {fmt(meWins?.pokerWins)}</span>
           </div>
-          <div className="shop-equipped" style={{ minWidth: 220 }}>
+          <div className="shop-equipped">
             <span className="muted" style={{ fontSize: '12px', textTransform: 'uppercase' }}>Sorted by</span>
             <span style={{ fontWeight: 700, fontSize: '18px' }}>{by === 'coins' ? 'Coins' : 'Wins'}</span>
             <span className="muted" style={{ fontSize: '12px' }}>
@@ -144,32 +144,23 @@ function Leaderboards() {
         ) : (
           <div style={{ display: 'grid', gap: '8px' }}>
             {top.map((r) => (
-              <div key={r.userId} className="shop-item__row" style={{
-                display: 'grid',
-                gridTemplateColumns: '64px 1fr 120px',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '10px 12px',
-                borderRadius: '10px',
-                background: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid var(--color-border)',
-              }}>
+              <div key={r.userId} className="leaderboard-row">
                 <div style={{ fontWeight: 800 }}>#{r.rank}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                <div className="leaderboard-row__details">
                   {r.avatarUrl ? (
-                    <img src={r.avatarUrl} alt="" style={{ width: 28, height: 28, borderRadius: 999 }} />
+                    <img src={r.avatarUrl} alt="" className="leaderboard-row__avatar" />
                   ) : (
-                    <div style={{ width: 28, height: 28, borderRadius: 999, background: 'rgba(148,163,184,0.14)' }} />
+                    <div className="leaderboard-row__avatar-placeholder" />
                   )}
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 650, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.nickname}</div>
-                    <div className="muted" style={{ fontSize: '12px' }}>Wins: {fmt(r.wins)} | Coins: {fmt(r.coins)}</div>
+                    <div className="muted leaderboard-row__stats">Wins: {fmt(r.wins)} | Coins: {fmt(r.coins)}</div>
                     {by === 'wins' && (
-                      <div className="muted" style={{ fontSize: '11px', opacity: 0.75 }}>UNO: {fmt(r.unoWins ?? 0)} | Poker: {fmt(r.pokerWins ?? 0)}</div>
+                      <div className="muted leaderboard-row__wins-detail">UNO: {fmt(r.unoWins ?? 0)} | Poker: {fmt(r.pokerWins ?? 0)}</div>
                     )}
                   </div>
                 </div>
-                <div style={{ textAlign: 'right', fontWeight: 800 }}>
+                <div className="leaderboard-row__value">
                   {by === 'coins' ? `${fmt(r.coins)} 🪙` : fmt(r.wins)}
                 </div>
               </div>
@@ -181,19 +172,10 @@ function Leaderboards() {
       {!myInTop10 && me && (
         <div className="card">
           <h3 style={{ margin: '0 0 12px', fontSize: '16px', fontWeight: 600 }}>Your position</h3>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '64px 1fr 120px',
-            alignItems: 'center',
-            gap: '12px',
-            padding: '10px 12px',
-            borderRadius: '10px',
-            background: 'rgba(255, 255, 255, 0.03)',
-            border: '1px solid var(--color-border)',
-          }}>
+          <div className="leaderboard-row">
             <div style={{ fontWeight: 800 }}>#{me.rank}</div>
             <div style={{ fontWeight: 650 }}>{me.nickname}</div>
-            <div style={{ textAlign: 'right', fontWeight: 800 }}>
+            <div className="leaderboard-row__value">
               {by === 'coins' ? `${fmt(me.coins)} 🪙` : fmt(me.wins)}
             </div>
           </div>
