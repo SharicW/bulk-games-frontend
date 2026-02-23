@@ -265,7 +265,7 @@ function Profile() {
 
   return (
     <div className="page-shell">
-      <div className="page-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+      <div className="page-header-row">
         <div className="page-header">
           <p className="eyebrow">Account</p>
           <h1>Profile</h1>
