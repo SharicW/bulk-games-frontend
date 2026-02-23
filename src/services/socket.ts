@@ -154,6 +154,16 @@ class NamespacedSocket {
         this.log('reconnect_attempt (token refreshed)')
       })
 
+      // Forward successful auto-reconnect so components can resync.
+      // The 'connect' event fires on every (re)connect; components distinguish
+      // initial vs reconnect via their own initialJoinDone flag.
+      s.io.on('reconnect', () => {
+        this.log('auto-reconnected')
+        // 'connect' will also fire; forward 'reconnect' separately for
+        // any component that wants to distinguish it cleanly.
+        this.emitLocal('reconnect', null)
+      })
+
       // ── Forward ALL game events from raw socket to local listeners ──
       s.on('gameState', (data: any) => {
         this.log('gameState received')
@@ -186,6 +196,11 @@ class NamespacedSocket {
     })
 
     return this._connectPromise
+  }
+
+  /** Returns true if the underlying socket is currently connected. */
+  isConnected(): boolean {
+    return this.socket?.connected ?? false
   }
 
   disconnect(): void {
