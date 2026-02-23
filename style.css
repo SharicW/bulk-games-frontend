@@ -1315,18 +1315,11 @@ body,
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   body { overflow: auto; }
   #app { flex-direction: column; }
-  #sidebar {
-    position: relative;
-    width: 100%;
-    height: auto;
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
+  /* Sidebar horizontal overrides are in overrides.css (768px).
+     Keeping the layout-flow resets here for #app / #main.         */
   #main {
     margin-left: 0;
     width: 100%;
@@ -4077,6 +4070,112 @@ button {
 
   .uno-hand__fan {
     height: 90px;
+  }
+}
+
+/* ── Poker header mobile wrap ────────────────────────────────────── */
+@media (max-width: 480px) {
+  .poker-header {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 10px;
+  }
+
+  .poker-header__info {
+    width: 100%;
+    gap: 6px;
+  }
+
+  .poker-header__controls {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .poker-header__controls button {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .poker-header__timer {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Bottom bar safe area padding */
+  .poker-bottom-bar {
+    padding-bottom: max(4px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .poker-actions__buttons {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .poker-actions__btn {
+    flex: 1;
+    min-width: 0 !important;
+    padding: 10px 8px !important;
+    font-size: 12px !important;
+  }
+
+  .poker-actions__slider {
+    width: 100%;
+  }
+
+  .poker-actions__presets {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .poker-actions__presets button {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+
+  /* Poker my cards: scale for phone */
+  .poker-my-cards .poker-card {
+    width: 48px;
+    height: auto;
+    aspect-ratio: 500 / 726;
+  }
+
+  /* Poker seat labels */
+  .poker-seat__name {
+    font-size: 11px;
+    max-width: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .poker-seat__stack {
+    font-size: 11px;
+  }
+
+  /* UNO bottom bar safe area */
+  .uno-bottom-bar {
+    padding-bottom: max(4px, env(safe-area-inset-bottom, 0px));
+  }
+
+  /* UNO header mobile wrap */
+  .uno-header {
+    flex-wrap: wrap;
+  }
+
+  .uno-header__info {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .uno-header__controls {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 4px;
   }
 }
 
