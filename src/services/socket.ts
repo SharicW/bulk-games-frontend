@@ -141,6 +141,19 @@ class NamespacedSocket {
         this.emitLocal('disconnect', null)
       })
 
+      // Refresh auth token before each reconnection attempt.
+      // On mobile, tabs get backgrounded and tokens can expire/rotate.
+      // Without this, auto-reconnects send the stale initial token,
+      // causing silent auth failures (the server rejects the socket
+      // but the client doesn't know why the join failed).
+      s.io.on('reconnect_attempt', () => {
+        const freshToken = getToken()
+        if (freshToken) {
+          (s as any).auth = { token: freshToken }
+        }
+        this.log('reconnect_attempt (token refreshed)')
+      })
+
       // ── Forward ALL game events from raw socket to local listeners ──
       s.on('gameState', (data: any) => {
         this.log('gameState received')
