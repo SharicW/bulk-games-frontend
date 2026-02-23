@@ -3783,3 +3783,310 @@ hr.divider {
 .effect-preview--water .effect-preview__dot:nth-child(4) { --wx: 8px; }
 .effect-preview--water .effect-preview__dot:nth-child(5) { --wx: -8px; }
 .effect-preview--water .effect-preview__dot:nth-child(6) { --wx: 6px; }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   MOBILE-FIRST RESPONSIVE IMPROVEMENTS
+   Mobile-first pass — phones (375-430px) → tablet → laptop → desktop
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Global overflow guard ──────────────────────────────────────── */
+html {
+  overflow-x: hidden;
+  /* safe-area-inset support for iPhone notch / Dynamic Island */
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Prevent iOS bounce-scroll from causing layout shifts on game pages */
+.uno-page--standalone,
+.poker-page--standalone {
+  overscroll-behavior: none;
+}
+
+/* Touch devices: disable double-tap zoom on buttons */
+button {
+  touch-action: manipulation;
+}
+
+/* ── Poker card aspect ratio (PNG source: 500×726) ──────────────── */
+/*    Using aspect-ratio replaces fixed heights — no distortion       */
+.poker-card {
+  height: auto;
+  aspect-ratio: 500 / 726;
+}
+
+.poker-seat__cards .poker-card {
+  height: auto;
+  aspect-ratio: 500 / 726;
+}
+
+.poker-my-cards .poker-card {
+  height: auto;
+  aspect-ratio: 500 / 726;
+}
+
+/* The existing 480px override sets height: 62px — override to auto */
+@media (max-width: 480px) {
+  .poker-my-cards .poker-card {
+    width: 44px;
+    height: auto;
+    aspect-ratio: 500 / 726;
+  }
+}
+
+/* ── Leaderboard responsive row grid ────────────────────────────── */
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: 52px 1fr 100px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--color-border);
+}
+
+/* ── Leaderboard row child elements ─────────────────────────────── */
+.leaderboard-row__details {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.leaderboard-row__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.leaderboard-row__avatar-placeholder {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.14);
+  flex-shrink: 0;
+}
+
+.leaderboard-row__stats {
+  font-size: 12px;
+}
+
+.leaderboard-row__wins-detail {
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.leaderboard-row__value {
+  text-align: right;
+  font-weight: 800;
+}
+
+/* ── Leaderboard stats grid ─────────────────────────────────────── */
+.leaderboard-stats-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.leaderboard-stats-grid .shop-equipped {
+  flex: 1 1 160px;
+  min-width: 0 !important;
+}
+
+/* ── Profile page header row ────────────────────────────────────── */
+.page-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.page-header-row > div:last-child {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ── Safe-area insets for standalone game pages ─────────────────── */
+@supports (padding: env(safe-area-inset-top)) {
+  .uno-page--standalone {
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+  }
+
+  .poker-page--standalone {
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+  }
+}
+
+/* ── Touch-friendly minimum tap target ──────────────────────────── */
+@media (hover: none) and (pointer: coarse) {
+  .btn-primary,
+  .btn-secondary,
+  .sidebar__link,
+  .auth-tab {
+    min-height: 44px;
+  }
+
+  /* Game action buttons */
+  .uno-actions__btn,
+  .poker-actions__btn {
+    min-height: 44px !important;
+    padding: 10px 14px !important;
+  }
+
+  /* Slider thumb larger on touch */
+  .poker-actions__range::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+  }
+  .poker-actions__range::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+/* ── Phone portrait: ≤ 430px ────────────────────────────────────── */
+@media (max-width: 430px) {
+
+  /* Auth gate banner — stack vertically */
+  .auth-gate-banner {
+    flex-direction: column;
+    text-align: center;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .auth-gate-banner a,
+  .auth-gate-banner button {
+    width: 100% !important;
+    justify-content: center;
+  }
+
+  /* Profile: wrap header controls */
+  .page-header-row {
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+
+  .page-header-row > div:last-child {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  /* Hide long email address on very small screens to save space */
+  .profile-email-hide {
+    display: none;
+  }
+
+  /* Leaderboard row — tighter columns */
+  .leaderboard-row {
+    grid-template-columns: 40px 1fr 80px;
+    gap: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  /* Leaderboard stats */
+  .leaderboard-stats-grid .shop-equipped {
+    flex: 1 1 140px;
+  }
+
+  /* Shop header balance + title */
+  .shop-header-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Shop equipped cards — 2 per row */
+  .shop-equipped {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 0 !important;
+  }
+
+  /* Modal padding tighter */
+  .modal-content {
+    margin: 8px;
+    padding: 18px 14px;
+  }
+
+  /* Page header font size */
+  .page-header h1 {
+    font-size: 20px;
+  }
+}
+
+/* ── Narrower phones: ≤ 390px ───────────────────────────────────── */
+@media (max-width: 390px) {
+
+  /* Poker: tighten header on very small screens */
+  .poker-header {
+    gap: 6px;
+    padding: 6px 10px;
+  }
+
+  .poker-header__code {
+    font-size: 12px;
+  }
+
+  /* Leaderboard row value column narrows */
+  .leaderboard-row {
+    grid-template-columns: 36px 1fr 72px;
+    font-size: 12px;
+  }
+
+  /* Card grid — always single column */
+  .card-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  /* Profile grid — single column */
+  .profile-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+
+/* ── Landscape phone (short viewport) ──────────────────────────── */
+@media (max-width: 900px) and (orientation: landscape) and (max-height: 430px) {
+  .uno-page--standalone,
+  .poker-page--standalone {
+    gap: 4px;
+    padding: 4px;
+  }
+
+  .uno-header,
+  .poker-header {
+    padding: 4px 10px;
+  }
+
+  .uno-hand {
+    min-height: 100px;
+  }
+
+  .uno-hand__fan {
+    height: 90px;
+  }
+}
+
+/* ── Hover suppression on touch (prevent sticky hover states) ────── */
+@media (hover: none) {
+  .poker-seat:hover .poker-seat__avatar {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .uno-card:hover {
+    transform: none !important;
+  }
+}
