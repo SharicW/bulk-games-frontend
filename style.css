@@ -724,6 +724,10 @@ a {
   cursor: pointer;
   transition: all var(--transition);
   position: relative;
+  /* Mobile: ensure the button itself is always on top and tappable */
+  z-index: 1;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .auth-tab::after {
@@ -735,6 +739,8 @@ a {
   height: 2px;
   background: transparent;
   transition: background var(--transition);
+  /* Decorative underline must NOT capture touch events */
+  pointer-events: none;
 }
 
 .auth-tab:hover {
