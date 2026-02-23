@@ -98,34 +98,85 @@
 /* ── Mobile sidebar overrides ──────────────────────────────────── */
 
 /* On mobile (<= 768px), sidebar becomes a sticky horizontal nav bar.
-   Ensure it doesn't conflict with desktop padding-top override.     */
+   The style.css breakpoint at 640px turns #sidebar relative, but
+   641–768px still had it fixed/overlapping. Unify here at 768px.       */
 @media (max-width: 768px) {
   #sidebar {
-    /* Reset desktop padding-top override */
-    padding-top: 12px;
+    /* Override fixed positioning — become a normal-flow horizontal bar */
+    position: relative !important;
+    width: 100% !important;
+    height: auto !important;
+    top: auto !important;
+    left: auto !important;
+    bottom: auto !important;
+    padding: 8px 12px !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    border-right: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    z-index: 20;
+  }
+
+  /* The inner .sidebar container also needs horizontal */
+  .sidebar {
+    width: 100%;
   }
 
   .sidebar__content {
     /* Horizontal layout: brand | links | profile */
     flex-direction: row;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     height: auto;
     width: 100%;
   }
 
   .sidebar__brand-wrapper {
     flex-shrink: 0;
+    /* Constrain logo so it doesn't eat up the entire row */
+    max-width: 44px;
+  }
+
+  .sidebar__brand-logo {
+    width: 44px;
+    height: auto;
+  }
+
+  /* Hide "MAIN" label — wastes horizontal space */
+  .sidebar__label {
+    display: none;
   }
 
   .sidebar__main {
     /* Horizontal links row */
     flex-direction: row;
     margin-top: 0;
-    gap: 4px;
+    gap: 2px;
     flex: 1;
     min-width: 0;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* Allow scrolling without visible scrollbar */
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .sidebar__main::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sidebar__links {
+    flex-direction: row;
+    gap: 2px;
+  }
+
+  .sidebar__link {
+    padding: 8px 10px;
+    gap: 6px;
+    white-space: nowrap;
+    /* Ensure touch targets are at least 44px tall (Apple HIG) */
+    min-height: 44px;
   }
 
   .sidebar__divider {
@@ -138,16 +189,33 @@
     border-top: none;
     flex-shrink: 0;
   }
+
+  /* Remove the fixed sidebar's left margin from main content */
+  #main {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
 }
 
-/* Extra-small phones: icon-only sidebar nav */
-@media (max-width: 400px) {
-  /* sidebar__text is already hidden at 400px by style.css;
-     ensure the links are centered with icon only */
+/* Small phones (≤ 480px): hide link text, show icons only */
+@media (max-width: 480px) {
+  .sidebar__text {
+    display: none;
+  }
+
   .sidebar__link {
-    padding: 10px;
+    padding: 8px;
     justify-content: center;
-    min-width: 40px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .sidebar__brand-wrapper {
+    max-width: 36px;
+  }
+
+  .sidebar__brand-logo {
+    width: 36px;
   }
 
   .sidebar__avatar {
