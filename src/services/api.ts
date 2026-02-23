@@ -23,17 +23,35 @@ async function request<T = any>(
   opts: RequestInit = {},
 ): Promise<T> {
   const token = getToken();
+
+  // Only set Content-Type when the request carries a body (POST/PATCH/PUT).
+  // Setting it on GET/HEAD/DELETE forces a CORS preflight that mobile
+  // Safari/Chrome can reject when preflight & actual response headers differ.
+  const method = (opts.method || 'GET').toUpperCase();
+  const needsContentType = !['GET', 'HEAD', 'DELETE'].includes(method);
+
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(needsContentType ? { 'Content-Type': 'application/json' } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(opts.headers as Record<string, string> ?? {}),
   };
 
   const res = await fetch(`${API_URL}${path}`, { ...opts, headers });
-  const data = await res.json();
 
-  if (!res.ok && !data.error) {
-    throw new Error(`HTTP ${res.status}`);
+  // Handle non-JSON error responses (e.g. HTML error pages, empty bodies)
+  let data: any;
+  try {
+    data = await res.json();
+  } catch {
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    throw new Error('Invalid JSON response');
+  }
+
+  // Always throw on non-OK responses so callers can handle failures properly.
+  // Previously a 401 with { error: 'Session expired' } was silently returned
+  // as success data, causing undefined values downstream on mobile.
+  if (!res.ok) {
+    throw new Error(data.error || `HTTP ${res.status}`);
   }
 
   return data as T;
