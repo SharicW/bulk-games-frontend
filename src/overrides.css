@@ -94,3 +94,95 @@
   flex-wrap: wrap;
   gap: 12px;
 }
+
+/* ── Mobile sidebar overrides ──────────────────────────────────── */
+
+/* On mobile (<= 768px), sidebar becomes a sticky horizontal nav bar.
+   Ensure it doesn't conflict with desktop padding-top override.     */
+@media (max-width: 768px) {
+  #sidebar {
+    /* Reset desktop padding-top override */
+    padding-top: 12px;
+  }
+
+  .sidebar__content {
+    /* Horizontal layout: brand | links | profile */
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    height: auto;
+    width: 100%;
+  }
+
+  .sidebar__brand-wrapper {
+    flex-shrink: 0;
+  }
+
+  .sidebar__main {
+    /* Horizontal links row */
+    flex-direction: row;
+    margin-top: 0;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .sidebar__divider {
+    display: none;
+  }
+
+  .sidebar__profile {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+    flex-shrink: 0;
+  }
+}
+
+/* Extra-small phones: icon-only sidebar nav */
+@media (max-width: 400px) {
+  /* sidebar__text is already hidden at 400px by style.css;
+     ensure the links are centered with icon only */
+  .sidebar__link {
+    padding: 10px;
+    justify-content: center;
+    min-width: 40px;
+  }
+
+  .sidebar__avatar {
+    width: 22px;
+    height: 22px;
+  }
+}
+
+/* ── Profile page header controls row ─────────────────────────── */
+/* The logged-in profile header has email + badge + logout button.
+   Wrap on small screens to prevent overflow.                        */
+@media (max-width: 540px) {
+  .page-header-row {
+    align-items: flex-start !important;
+  }
+
+  .page-header-row > div:last-child {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px !important;
+  }
+}
+
+/* ── Shop header row ───────────────────────────────────────────── */
+@media (max-width: 480px) {
+  /* Shop balance + page title: wrap if needed */
+  .shop-header-row,
+  .page-shell > div:first-child {
+    flex-wrap: wrap;
+  }
+}
+
+/* ── Auth card: full-width on very small screens ───────────────── */
+@media (max-width: 430px) {
+  .auth-card {
+    padding: 20px 16px;
+  }
+}
