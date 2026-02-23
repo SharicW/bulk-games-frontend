@@ -479,19 +479,31 @@ function Poker() {
   // Connect and join lobby
   useEffect(() => {
     if (!lobbyCode || !isLoggedIn || !user) return
-    
-    const connect = async () => {
+
+    let stopped = false
+    // Prevents the connect-event listener from firing join() during the
+    // initial connectAndJoin flow — only reconnects should use it.
+    let initialJoinDone = false
+    // In-flight guard: prevents concurrent join requests (e.g. rapid reconnects)
+    let joinInFlight = false
+
+    const join = async () => {
+      if (joinInFlight) {
+        if (IS_DEV) console.log('[poker:join] skipped — already in-flight')
+        return
+      }
+      joinInFlight = true
       try {
-        await pokerSocket.connect()
-        setConnected(true)
-        
         const result = await pokerSocket.joinLobby(lobbyCode)
+        if (stopped) return
         
         if (result.success && result.gameState) {
           const patched = patchPlayerStack(result.gameState)
-          lastVersionRef.current = patched.version ?? 0
+          // Use Math.max so a slow ACK never downgrades the tracked version
+          lastVersionRef.current = Math.max(lastVersionRef.current, patched.version ?? 0)
           setGameState(patched)
           logTTFC()
+          setError(null)
 
           if (patched.showdownResults && patched.winners && patched.winners.length > 0) {
             showdownLockRef.current = true
@@ -507,13 +519,33 @@ function Poker() {
         } else {
           setError(result.error || 'Failed to join lobby')
         }
+      } catch (err: any) {
+        if (!stopped) {
+          console.warn('[poker:join] error:', err?.message || err)
+          setError('Failed to join lobby — retrying…')
+          setTimeout(() => { if (!stopped) setError(null) }, 4000)
+        }
+      } finally {
+        joinInFlight = false
+      }
+    }
+
+    const connectAndJoin = async () => {
+      try {
+        await pokerSocket.connect()
+        if (stopped) return
+        setConnected(true)
+        // Mark initial join done BEFORE calling join so subsequent
+        // connect events (reconnects) also trigger rejoin.
+        initialJoinDone = true
+        await join()
       } catch (err) {
-        setError('Failed to connect to server')
+        if (!stopped) setError('Failed to connect to server')
         console.error(err)
       }
     }
     
-    connect()
+    connectAndJoin()
     
     const unsubscribe = pokerSocket.on('gameState', (data) => {
       const incoming = data as ClientGameState
@@ -553,20 +585,20 @@ function Poker() {
       setError('Lobby has been closed by the host')
     })
 
-    // On reconnect, rejoin to get fresh state
+    // Reconnect handler: only fires for RECONNECTS (not the initial connect).
+    // The initialJoinDone flag prevents a double-join on first mount,
+    // where connectAndJoin already handles the initial join.
     const unsubscribeConnect = pokerSocket.on('connect', () => {
-      if (lobbyCode) {
-        pokerSocket.joinLobby(lobbyCode).then(result => {
-          if (result.success && result.gameState) {
-            const patched = patchPlayerStack(result.gameState)
-            lastVersionRef.current = patched.version ?? 0
-            setGameState(patched)
-          }
+      if (!stopped && lobbyCode && initialJoinDone) {
+        if (IS_DEV) console.log('[poker:reconnect] socket reconnected, rejoining…')
+        join().catch(err => {
+          if (!stopped) console.warn('[poker:reconnect] join failed:', err?.message || err)
         })
       }
     })
     
     return () => {
+      stopped = true
       unsubscribe()
       unsubscribeCelebration()
       unsubscribeEnd()
