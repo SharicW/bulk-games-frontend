@@ -17,6 +17,8 @@ function Leaderboards() {
   const [meWins, setMeWins] = useState<LeaderboardRow | null>(null)
   const [err, setErr] = useState<string>('')
   const [busy, setBusy] = useState(false)
+  /** Ref-based guard: prevents duplicate in-flight requests on rapid tab taps. */
+  const loadingRef = useRef(false)
 
   const cacheRef = useRef(new Map<string, CacheEntry<any>>())
   const cacheMs = 20_000
@@ -32,7 +34,10 @@ function Leaderboards() {
 
   useEffect(() => {
     if (!isLoggedIn) return
+    // Guard: if a request is already in flight (e.g. rapid tab tap), skip
+    if (loadingRef.current) return
     let cancelled = false
+    loadingRef.current = true
     setBusy(true)
     setErr('')
     Promise.all([
@@ -51,6 +56,7 @@ function Leaderboards() {
         setErr('Failed to load leaderboards')
       })
       .finally(() => {
+        loadingRef.current = false
         if (cancelled) return
         setBusy(false)
       })
@@ -96,10 +102,10 @@ function Leaderboards() {
         </div>
 
         <div className="auth-tabs" style={{ width: 'auto' }}>
-          <button className={`auth-tab ${by === 'coins' ? 'auth-tab--active' : ''}`} onClick={() => setBy('coins')} disabled={busy}>
+          <button className={`auth-tab ${by === 'coins' ? 'auth-tab--active' : ''}`} onClick={() => setBy('coins')}>
             Coins
           </button>
-          <button className={`auth-tab ${by === 'wins' ? 'auth-tab--active' : ''}`} onClick={() => setBy('wins')} disabled={busy}>
+          <button className={`auth-tab ${by === 'wins' ? 'auth-tab--active' : ''}`} onClick={() => setBy('wins')}>
             Wins
           </button>
         </div>
