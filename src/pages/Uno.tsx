@@ -806,6 +806,31 @@ function Uno() {
       setOppDrawFlash({ id: `drawfx_${p.playerId}_${Date.now()}` })
     })
 
+    // ── Page-visibility restore (mobile: tab returns from background) ──
+    // iOS/Android silently kills WebSockets when the tab is backgrounded.
+    // The server keeps thinking the old socket is alive for ~50 s (ping timeout).
+    // When the user returns to the tab:
+    //   • If the socket auto-reconnected:  the 'connect' handler above already
+    //     triggered join() so nothing extra is needed here.
+    //   • If the socket still APPEARS connected (client hasn't detected the
+    //     stale connection yet): we request a fresh state to avoid being stuck
+    //     on stale data (e.g. missing the "second player joined" update).
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible' || stopped || !lobbyCode) return
+      if (unoSocket.isConnected()) {
+        if (IS_DEV) console.log('[uno:visibility] tab visible, requesting state resync')
+        unoSocket.requestState(lobbyCode).then(res => {
+          if (!stopped && res.success && res.gameState) {
+            // Force-apply even if version == lastVersionRef (we may have missed updates)
+            lastVersionRef.current = 0
+            applyState(res.gameState)
+          }
+        }).catch(() => { /* ignore — socket will reconnect on its own */ })
+      }
+      // If not connected: socket.io auto-reconnect + 'connect' handler handles it
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     return () => {
       stopped = true
       unsubscribeState()
@@ -814,6 +839,7 @@ function Uno() {
       unsubscribeEnd()
       unsubscribeConnect()
       unsubscribeDrawFx()
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
     }
   }, [lobbyCode, isLoggedIn, user?.id, applyState])
