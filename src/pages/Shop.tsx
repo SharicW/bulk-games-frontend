@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { apiGetShopItems, apiBuyItem, apiEquipItem, type ShopItem } from '../services/api'
+import CoinIcon from '../components/CoinIcon'
 
 /** Tiny animated preview for win-celebration effects shown in Shop cards */
 function EffectPreview({ effectId }: { effectId: string }) {
@@ -173,7 +174,7 @@ function Shop() {
           <h1>Shop</h1>
         </div>
         <div className="shop-balance">
-          <span className="shop-balance__icon">(C)</span>
+          <CoinIcon size={22} style={{ marginRight: 4 }} />
           <span className="shop-balance__amount">{user?.coins ?? 0} coins</span>
         </div>
       </div>
@@ -251,7 +252,7 @@ function Shop() {
                           onClick={() => handleBuy(item.id)}
                           disabled={busy === item.id || (user?.coins ?? 0) < item.price}
                         >
-                          {busy === item.id ? 'Buying...' : `Buy - ${item.price} (C)`}
+                          {busy === item.id ? 'Buying...' : <>{`Buy – ${item.price} `}<CoinIcon size={13} style={{ marginLeft: 2 }} /></>}
                         </button>
                       ) : isEquipped ? (
                         <span className="shop-item__badge shop-item__badge--equipped">Equipped</span>
@@ -302,7 +303,7 @@ function Shop() {
                           onClick={() => handleBuy(item.id)}
                           disabled={busy === item.id || (user?.coins ?? 0) < item.price}
                         >
-                          {busy === item.id ? 'Buying...' : `Buy - ${item.price} (C)`}
+                          {busy === item.id ? 'Buying...' : <>{`Buy – ${item.price} `}<CoinIcon size={13} style={{ marginLeft: 2 }} /></>}
                         </button>
                       ) : isEquipped ? (
                         <span className="shop-item__badge shop-item__badge--equipped">Equipped</span>
