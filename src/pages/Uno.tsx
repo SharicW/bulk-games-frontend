@@ -821,8 +821,8 @@ function Uno() {
         if (IS_DEV) console.log('[uno:visibility] tab visible, requesting state resync')
         unoSocket.requestState(lobbyCode).then(res => {
           if (!stopped && res.success && res.gameState) {
-            // Force-apply even if version == lastVersionRef (we may have missed updates)
-            lastVersionRef.current = 0
+            // applyState uses strict-less-than (<), so same-version re-broadcasts
+            // are applied as-is.  No need to reset lastVersionRef here.
             applyState(res.gameState)
           }
         }).catch(() => { /* ignore — socket will reconnect on its own */ })
