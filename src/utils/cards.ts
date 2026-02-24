@@ -1,12 +1,35 @@
 import type { Card, Rank, Suit } from '../types/poker';
 
-/* ── Lazy glob import (NOT eager) — avoids blocking TTFC ────────── */
+/* ── Eager glob import — all card PNGs resolved at build time ───────── */
 const cardImages = import.meta.glob<{ default: string }>(
   '/assets/cards/**/*.png',
   { eager: true }
 );
 
-/* ── Priority + batch preload system ─────────────────────────────── */
+/* ──────────────────────────────────────────────────────────────────────
+ * Face-card URL set
+ * Face cards (J, Q, K, A) are 190-285 KB each — 3-5× larger than number
+ * cards (≈54 KB).  The original code deferred ALL cards to requestIdleCallback,
+ * which meant face cards might not be cached by the time they were dealt,
+ * causing them to briefly appear invisible on first render.
+ *
+ * Fix: extract face-card URLs at module-init time so preloadPokerCards()
+ * can load them synchronously (not in an idle batch).
+ * ────────────────────────────────────────────────────────────────────── */
+const FACE_CARD_FOLDERS = new Set(['jack', 'queen', 'king', 'A']);
+
+/**
+ * Production URLs for face cards only (J, Q, K, A across all 4 suits).
+ * Identified by the source-path folder name inside the glob key.
+ */
+export const faceCardUrls: string[] = Object.entries(cardImages)
+  .filter(([srcPath]) => {
+    // srcPath example: '/assets/cards/king/king_of_spades.png'
+    const parts = srcPath.split('/');
+    const folder = parts[parts.length - 2];
+    return folder ? FACE_CARD_FOLDERS.has(folder) : false;
+  })
+  .map(([, mod]) => mod.default);
 
 const _allPokerUrls = Object.values(cardImages).map(m => m.default);
 const _loadedUrls = new Set<string>();
@@ -38,8 +61,19 @@ async function loadBatch(urls: string[]): Promise<void> {
 }
 
 /**
- * Preload critical cards first (card backs + provided priority cards),
- * then load remaining in batches via requestIdleCallback / setTimeout.
+ * Preload poker card images.
+ *
+ * Phase 1 — face cards (J/Q/K/A, 16 cards) are fetched IMMEDIATELY and in
+ *            parallel.  These are the largest files and the most likely to be
+ *            visible at the start of a hand, so they must be in the browser
+ *            cache before the game renders.
+ *
+ * Phase 2 — remaining number cards (2-10, 36 cards) are loaded lazily via
+ *            requestIdleCallback / setTimeout so they don't compete with the
+ *            first render.
+ *
+ * @param priorityCards  Optional list of cards currently in the player's hand
+ *                       (included in the face-card batch for extra priority).
  */
 export function preloadPokerCards(priorityCards?: Card[]): void {
   if (_preloadStarted) return;
@@ -48,29 +82,27 @@ export function preloadPokerCards(priorityCards?: Card[]): void {
   const DEV = import.meta.env.DEV;
   const t0 = DEV ? performance.now() : 0;
 
-  // Build priority URL list: cards in hand / on table come first
-  const priorityUrls: string[] = [];
+  // ── Phase 1: Face cards + any provided priority cards ─────────────────
+  // Start immediately — do NOT wait for idle callback.
+  const phase1Urls = new Set<string>(faceCardUrls);
   if (priorityCards) {
     for (const c of priorityCards) {
       const url = getCardImageUrl(c);
-      if (url && !_loadedUrls.has(url)) priorityUrls.push(url);
+      if (url) phase1Urls.add(url);
     }
   }
 
-  // Load priority cards immediately
-  if (priorityUrls.length > 0) {
-    loadBatch(priorityUrls).then(() => {
-      if (DEV) console.log(`[preload] TTFC priority ${priorityUrls.length} cards: ${(performance.now() - t0).toFixed(0)}ms`);
-    });
-  }
+  loadBatch([...phase1Urls]).then(() => {
+    if (DEV) console.log(`[preload] phase1 face+priority (${phase1Urls.size}) cards: ${(performance.now() - t0).toFixed(0)}ms`);
+  });
 
-  // Schedule remaining in idle batches
-  const remaining = _allPokerUrls.filter(u => !priorityUrls.includes(u));
+  // ── Phase 2: Number cards (2–10) via idle batches ─────────────────────
+  const remaining = _allPokerUrls.filter(u => !phase1Urls.has(u));
   let idx = 0;
 
   function loadNextBatch() {
     if (idx >= remaining.length) {
-      if (DEV) console.log(`[preload] TTAC all ${_allPokerUrls.length} cards: ${(performance.now() - t0).toFixed(0)}ms`);
+      if (DEV) console.log(`[preload] all ${_allPokerUrls.length} cards done: ${(performance.now() - t0).toFixed(0)}ms`);
       return;
     }
     const batch = remaining.slice(idx, idx + BATCH_SIZE);
@@ -84,11 +116,11 @@ export function preloadPokerCards(priorityCards?: Card[]): void {
     });
   }
 
-  // Start idle loading after a small delay to not block first render
+  // Delay number-card loading until the browser is idle
   if (typeof requestIdleCallback === 'function') {
     requestIdleCallback(() => loadNextBatch());
   } else {
-    setTimeout(loadNextBatch, 100);
+    setTimeout(loadNextBatch, 150);
   }
 }
 
@@ -137,7 +169,12 @@ export function getCardImageUrl(card: Card): string {
     return imageModule.default;
   }
   
-  // Fallback to direct path if not found in glob
+  // Fallback to direct path if not found in glob.
+  // In production the hashed URL won't be resolved this way, so
+  // CardDisplay will fall back to its CSS text rendering.
+  if (import.meta.env.DEV) {
+    console.warn(`[cards] glob miss for: ${path}`);
+  }
   return path;
 }
 
