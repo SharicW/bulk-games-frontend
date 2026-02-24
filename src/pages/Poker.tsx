@@ -111,6 +111,19 @@ const CardDisplay = memo(function CardDisplay({
   highlighted?: boolean
   dimmed?: boolean
 }) {
+  // Track image-load failures so we can fall back to CSS text rendering.
+  // This handles the "invisible face card" bug: face cards (J/Q/K/A) are
+  // 190-285 KB each and may fail to load on slow connections or if the
+  // hashed production URL is somehow wrong.
+  const [imgFailed, setImgFailed] = useState(false)
+
+  // Reset the error flag whenever the card identity changes.
+  // memo preserves component state across prop changes, so without this
+  // a previous card's error would carry over to the next card.
+  useEffect(() => {
+    setImgFailed(false)
+  }, [card?.rank, card?.suit])
+
   if (!card || isHidden) {
     return (
       <div className="poker-card poker-card--back">
@@ -129,8 +142,19 @@ const CardDisplay = memo(function CardDisplay({
 
   return (
     <div className="poker-card" style={cardStyle}>
-      {imageUrl ? (
-        <img src={imageUrl} alt={formatCard(card)} className="poker-card__image" decoding="async" loading="eager" />
+      {imageUrl && !imgFailed ? (
+        <img
+          src={imageUrl}
+          alt={formatCard(card)}
+          className="poker-card__image"
+          decoding="async"
+          loading="eager"
+          onError={() => {
+            // Log once per card so we can diagnose asset-path issues
+            console.warn(`[cards] Failed to load image for ${card.rank} of ${card.suit}: ${imageUrl}`)
+            setImgFailed(true)
+          }}
+        />
       ) : (
         <div className="poker-card__fallback" style={{ color: getSuitColor(card.suit) }}>
           <span className="poker-card__rank">{card.rank}</span>
@@ -614,8 +638,10 @@ function Poker() {
         if (IS_DEV) console.log('[poker:visibility] tab visible, requesting state resync')
         pokerSocket.requestState(lobbyCode).then(res => {
           if (!stopped && res.success && res.gameState) {
-            // Force-apply even if version == lastVersion (we might have missed updates)
-            lastVersionRef.current = 0
+            // applyState uses strict-less-than (<), so same-version re-broadcasts
+            // are applied as-is.  No need to reset lastVersionRef here — doing so
+            // created a race: if a broadcast arrived between the reset and this
+            // response, the version counter would regress.
             applyState(res.gameState)
           }
         }).catch(() => { /* ignore — socket will reconnect on its own */ })
