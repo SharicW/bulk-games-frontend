@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { apiGetLeaderboard, apiGetMyRank, type LeaderboardBy, type LeaderboardRow } from '../services/api'
+import CoinIcon from '../components/CoinIcon'
 
 type CacheEntry<T> = { ts: number; data: T }
 
@@ -16,7 +17,6 @@ function Leaderboards() {
   const [meCoins, setMeCoins] = useState<LeaderboardRow | null>(null)
   const [meWins, setMeWins] = useState<LeaderboardRow | null>(null)
   const [err, setErr] = useState<string>('')
-  const [busy, setBusy] = useState(false)
   /** Ref-based guard: prevents duplicate in-flight requests on rapid tab taps. */
   const loadingRef = useRef(false)
 
@@ -38,7 +38,6 @@ function Leaderboards() {
     if (loadingRef.current) return
     let cancelled = false
     loadingRef.current = true
-    setBusy(true)
     setErr('')
     Promise.all([
       getCached('me:coins', () => apiGetMyRank('coins')),
@@ -57,8 +56,6 @@ function Leaderboards() {
       })
       .finally(() => {
         loadingRef.current = false
-        if (cancelled) return
-        setBusy(false)
       })
     return () => { cancelled = true }
   }, [isLoggedIn, by])
@@ -167,7 +164,7 @@ function Leaderboards() {
                   </div>
                 </div>
                 <div className="leaderboard-row__value">
-                  {by === 'coins' ? `${fmt(r.coins)} 🪙` : fmt(r.wins)}
+                  {by === 'coins' ? <>{fmt(r.coins)}&nbsp;<CoinIcon size={14} /></> : fmt(r.wins)}
                 </div>
               </div>
             ))}
@@ -182,7 +179,7 @@ function Leaderboards() {
             <div style={{ fontWeight: 800 }}>#{me.rank}</div>
             <div style={{ fontWeight: 650 }}>{me.nickname}</div>
             <div className="leaderboard-row__value">
-              {by === 'coins' ? `${fmt(me.coins)} 🪙` : fmt(me.wins)}
+              {by === 'coins' ? <>{fmt(me.coins)}&nbsp;<CoinIcon size={14} /></> : fmt(me.wins)}
             </div>
           </div>
         </div>
