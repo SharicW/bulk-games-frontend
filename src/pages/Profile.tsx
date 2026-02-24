@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useRef, ChangeEvent } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { apiGetShopItems, type ShopItem } from '../services/api'
+import CoinIcon from '../components/CoinIcon'
 
 /** Build CSS classes for player cosmetics (same map used in Poker/UNO) */
 const BORDER_MAP: Record<string, string> = {
@@ -298,7 +299,7 @@ function Profile() {
 
       {/* Coins balance */}
       <div className="card" style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '12px', padding: '16px 20px' }}>
-        <span style={{ fontSize: '22px', fontWeight: 700, letterSpacing: '1px' }}>(C)</span>
+        <CoinIcon size={32} />
         <div>
           <span className="muted" style={{ fontSize: '12px', textTransform: 'uppercase', display: 'block' }}>Balance</span>
           <span style={{ fontSize: '24px', fontWeight: 700 }}>{user?.coins ?? 0} coins</span>
