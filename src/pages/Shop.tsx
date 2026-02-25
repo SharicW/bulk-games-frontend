@@ -92,7 +92,7 @@ function Shop() {
       const res = await apiBuyItem(itemId)
       if (res.success) {
         setMessage({ text: `Purchased! You now have ${res.coins} coins.`, type: 'success' })
-        await refreshUser()
+        refreshUser()
       } else {
         setMessage({ text: res.error || 'Purchase failed', type: 'error' })
       }
@@ -109,7 +109,7 @@ function Shop() {
       const res = await apiEquipItem(itemId)
       if (res.success) {
         setMessage({ text: 'Equipped!', type: 'success' })
-        await refreshUser()
+        refreshUser()
       } else {
         setMessage({ text: res.error || 'Equip failed', type: 'error' })
       }
@@ -126,7 +126,7 @@ function Shop() {
       const res = await apiEquipItem(null, slot)
       if (res.success) {
         setMessage({ text: 'Unequipped!', type: 'success' })
-        await refreshUser()
+        refreshUser()
       } else {
         setMessage({ text: res.error || 'Unequip failed', type: 'error' })
       }
