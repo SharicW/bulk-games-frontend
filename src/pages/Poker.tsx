@@ -21,7 +21,7 @@ const BORDER_MAP: Record<string, string> = {
   border_neon: 'cosmetic-border--neon',
   border_fire: 'cosmetic-border--fire',
   border_ice: 'cosmetic-border--ice',
-  border_emerald: 'cosmetic-border--emerald',
+  border_starlight: 'cosmetic-border--starlight',
   border_purple: 'cosmetic-border--purple',
   border_ruby: 'cosmetic-border--ruby',
 }
@@ -222,16 +222,16 @@ function HandGuide() {
 
 // ── Player seat component ──────────────────────────────────────────
 
-function PlayerSeat({ 
-  player, 
-  isDealer, 
-  isSmallBlind, 
-  isBigBlind, 
+function PlayerSeat({
+  player,
+  isDealer,
+  isSmallBlind,
+  isBigBlind,
   isCurrentTurn,
   isMe,
   isWinner,
   cosmeticClasses,
-}: { 
+}: {
   player: ClientPlayer
   isDealer: boolean
   isSmallBlind: boolean
@@ -242,7 +242,7 @@ function PlayerSeat({
   cosmeticClasses?: string
 }) {
   const positionMarker = isDealer ? 'D' : isSmallBlind ? 'SB' : isBigBlind ? 'BB' : null
-  
+
   return (
     <div className={`poker-seat ${player.folded ? 'poker-seat--folded' : ''} ${isCurrentTurn ? 'poker-seat--active' : ''} ${isMe ? 'poker-seat--me' : ''} ${isWinner ? 'poker-seat--winner' : ''} ${!player.isConnected ? 'poker-seat--disconnected' : ''} ${cosmeticClasses || ''}`}>
       <div className="poker-seat__avatar">
@@ -255,25 +255,25 @@ function PlayerSeat({
           <span className="poker-seat__position">{positionMarker}</span>
         )}
       </div>
-      
+
       <div className="poker-seat__info">
         <span className="poker-seat__name">{player.nickname}</span>
         <span className="poker-seat__stack">${player.stack}</span>
       </div>
-      
+
       {player.lastAction && (
         <div className="poker-seat__action">
           {player.lastAction}{player.lastBet > 0 ? ` $${player.lastBet}` : ''}
         </div>
       )}
-      
+
       {player.currentBet > 0 && (
         <div className="poker-seat__bet">
           <span className="poker-seat__bet-chip" />
           ${player.currentBet}
         </div>
       )}
-      
+
       {/* Removed: poker-seat__cards — no hidden cards under avatars */}
     </div>
   )
@@ -281,27 +281,28 @@ function PlayerSeat({
 
 // ── Action panel component ─────────────────────────────────────────
 
-function ActionPanel({ 
-  gameState, 
-  onAction 
-}: { 
+function ActionPanel({
+  gameState,
+  onAction
+}: {
   gameState: ClientGameState
-  onAction: (action: PlayerAction, amount?: number) => void
+  onAction: (action: PlayerAction, amount?: number) => Promise<void> | void
 }) {
   const [betAmount, setBetAmount] = useState(0)
+  const [pending, setPending] = useState(false)
   const currentPlayer = gameState.players[gameState.currentPlayerIndex]
   const me = gameState.players.find(p => p.playerId === gameState.myPlayerId)
-  
+
   const isMyTurn = currentPlayer?.playerId === gameState.myPlayerId
   const toCall = gameState.currentBet - (me?.currentBet || 0)
   const canCheck = toCall === 0
   const minBet = gameState.currentBet === 0 ? gameState.bigBlind : gameState.currentBet + gameState.minRaise
   const maxBet = (me?.stack || 0) + (me?.currentBet || 0)
-  
+
   useEffect(() => {
     setBetAmount(Math.min(minBet, maxBet))
   }, [minBet, maxBet])
-  
+
   if (!isMyTurn || !me || me.folded || me.allIn) {
     return (
       <div className="poker-actions poker-actions--waiting">
@@ -311,42 +312,50 @@ function ActionPanel({
       </div>
     )
   }
-  
+
   const handleBetChange = (value: number) => {
     setBetAmount(Math.max(minBet, Math.min(maxBet, value)))
   }
-  
+
   const setHalfPot = () => handleBetChange(Math.floor(gameState.pot / 2))
   const setPot = () => handleBetChange(gameState.pot)
   const setAllIn = () => handleBetChange(maxBet)
-  
+
+  const handleAct = async (action: PlayerAction, amt?: number) => {
+    if (pending) return;
+    setPending(true);
+    await onAction(action, amt);
+    setPending(false);
+  }
+
   return (
     <div className="poker-actions">
       <div className="poker-actions__buttons">
-        <button className="btn-secondary poker-actions__btn poker-actions__btn--fold" onClick={() => onAction('fold')}>
-          Fold
+        <button className="btn-secondary poker-actions__btn poker-actions__btn--fold" disabled={pending} onClick={() => handleAct('fold')}>
+          {pending ? '...' : 'Fold'}
         </button>
-        
+
         {canCheck ? (
-          <button className="btn-primary poker-actions__btn" onClick={() => onAction('check')}>
-            Check
+          <button className="btn-primary poker-actions__btn" disabled={pending} onClick={() => handleAct('check')}>
+            {pending ? '...' : 'Check'}
           </button>
         ) : (
-          <button className="btn-primary poker-actions__btn" onClick={() => onAction('call')}>
-            Call ${Math.min(toCall, me.stack)}
+          <button className="btn-primary poker-actions__btn" disabled={pending} onClick={() => handleAct('call')}>
+            {pending ? '...' : `Call $${Math.min(toCall, me.stack)}`}
           </button>
         )}
-        
+
         {me.stack > toCall && (
-          <button 
-            className="btn-primary poker-actions__btn poker-actions__btn--raise" 
-            onClick={() => onAction(gameState.currentBet === 0 ? 'bet' : 'raise', betAmount)}
+          <button
+            className="btn-primary poker-actions__btn poker-actions__btn--raise"
+            disabled={pending}
+            onClick={() => handleAct(gameState.currentBet === 0 ? 'bet' : 'raise', betAmount)}
           >
-            {gameState.currentBet === 0 ? 'Bet' : 'Raise'} ${betAmount}
+            {pending ? '...' : `${gameState.currentBet === 0 ? 'Bet' : 'Raise'} $${betAmount}`}
           </button>
         )}
       </div>
-      
+
       {me.stack > toCall && (
         <div className="poker-actions__slider">
           <div className="poker-actions__presets">
@@ -354,18 +363,18 @@ function ActionPanel({
             <button className="btn-secondary" onClick={setPot}>Pot</button>
             <button className="btn-secondary" onClick={setAllIn}>All-in</button>
           </div>
-          <input 
-            type="range" 
-            min={minBet} 
-            max={maxBet} 
+          <input
+            type="range"
+            min={minBet}
+            max={maxBet}
             value={betAmount}
             onChange={e => handleBetChange(parseInt(e.target.value))}
             className="poker-actions__range"
           />
-          <input 
-            type="number" 
-            min={minBet} 
-            max={maxBet} 
+          <input
+            type="number"
+            min={minBet}
+            max={maxBet}
             value={betAmount}
             onChange={e => handleBetChange(parseInt(e.target.value) || minBet)}
             className="poker-actions__input"
@@ -382,7 +391,7 @@ function Poker() {
   const [searchParams] = useSearchParams()
   const lobbyCode = searchParams.get('lobby') || ''
   const { isLoggedIn, user, loading: authLoading } = useAuth()
-  
+
   const [gameState, setGameState] = useState<ClientGameState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [connected, setConnected] = useState(false)
@@ -392,7 +401,7 @@ function Poker() {
   // ── Celebration (server-driven; visible to everyone) ───────────
   const [celebration, setCelebration] = useState<null | { id: string; effectId: 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'water_burst' | 'sakura_petals' | 'gold_stars' | 'rainbow_burst' }>(null)
   const celebrationTimerRef = useRef<number | null>(null)
-  
+
   const timerRef = useRef<number | null>(null)
 
   // Showdown delay
@@ -522,7 +531,7 @@ function Poker() {
       try {
         const result = await pokerSocket.joinLobby(lobbyCode)
         if (stopped) return
-        
+
         if (result.success && result.gameState) {
           const patched = patchPlayerStack(result.gameState)
           // Use Math.max so a slow ACK never downgrades the tracked version
@@ -570,9 +579,9 @@ function Poker() {
         console.error(err)
       }
     }
-    
+
     connectAndJoin()
-    
+
     const unsubscribe = pokerSocket.on('gameState', (data) => {
       const incoming = data as ClientGameState
 
@@ -606,7 +615,7 @@ function Poker() {
       if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
       celebrationTimerRef.current = window.setTimeout(() => setCelebration(null), 4000)
     })
-    
+
     const unsubscribeEnd = pokerSocket.on('lobbyEnded', () => {
       setError('Lobby has been closed by the host')
     })
@@ -649,7 +658,7 @@ function Poker() {
       // If not connected: socket.io auto-reconnect + 'connect' handler handles it
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
-    
+
     return () => {
       stopped = true
       unsubscribe()
@@ -664,16 +673,16 @@ function Poker() {
       pendingStateRef.current = null
     }
   }, [lobbyCode, isLoggedIn, user?.id, applyState])
-  
+
   // Timer countdown
   useEffect(() => {
     if (gameState?.turnTimeRemaining != null && gameState.turnTimeRemaining > 0) {
       const secs = Math.ceil(gameState.turnTimeRemaining / 1000)
       setMaxTime(secs)
       setTimeRemaining(secs)
-      
+
       if (timerRef.current) clearInterval(timerRef.current)
-      
+
       timerRef.current = window.setInterval(() => {
         setTimeRemaining(prev => {
           if (prev === null || prev <= 1) {
@@ -687,12 +696,12 @@ function Poker() {
       setTimeRemaining(null)
       if (timerRef.current) clearInterval(timerRef.current)
     }
-    
+
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
     }
   }, [gameState?.turnTimeRemaining, gameState?.currentPlayerIndex])
-  
+
   const handleAction = useCallback(async (action: PlayerAction, amount?: number) => {
     if (!gameState) return
 
@@ -718,29 +727,29 @@ function Poker() {
       action,
       amount
     )
-    
+
     if (!result.success) {
       setError(result.error || result.reason || 'Action failed')
       setTimeout(() => setError(null), 3000)
     }
   }, [gameState])
-  
+
   const handleStartGame = useCallback(async () => {
     if (!gameState) return
-    
+
     const result = await pokerSocket.startGame(gameState.lobbyCode)
-    
+
     if (!result.success) {
       setError(result.error || result.reason || 'Failed to start game')
       setTimeout(() => setError(null), 3000)
     }
   }, [gameState])
-  
+
   const handleEndLobby = useCallback(async () => {
     if (!gameState) return
-    
+
     const result = await pokerSocket.endLobby(gameState.lobbyCode)
-    
+
     if (result.success) {
       window.close()
     } else {
@@ -757,7 +766,7 @@ function Poker() {
     try { await pokerSocket.leaveLobby(gameState.lobbyCode) } catch { /* ignore */ }
     window.location.href = '/main-menu'
   }, [gameState])
-  
+
   const isHost = gameState?.hostId === user?.id
   const isPublic = !!gameState?.isPublic
   const isSpectator = !!gameState?.isSpectator
@@ -829,7 +838,7 @@ function Poker() {
       </div>
     )
   }
-  
+
   if (error && !gameState) {
     return (
       <div className="poker-page poker-page--standalone">
@@ -841,7 +850,7 @@ function Poker() {
       </div>
     )
   }
-  
+
   if (!connected || !gameState) {
     return (
       <div className="poker-page poker-page--standalone">
@@ -852,7 +861,7 @@ function Poker() {
       </div>
     )
   }
-  
+
   return (
     <div className="poker-page poker-page--standalone">
       {error && (
@@ -860,7 +869,7 @@ function Poker() {
           {error}
         </div>
       )}
-      
+
       <div className="poker-header">
         <div className="poker-header__info">
           <span className="poker-header__code">Lobby: {gameState.lobbyCode}</span>
@@ -869,40 +878,40 @@ function Poker() {
           {spectatorCount > 0 && <span className="poker-header__meta">👁 {spectatorCount}</span>}
           {isSpectator && <span className="poker-header__spectator-badge">Spectating</span>}
         </div>
-        
+
         {gameState.gameStarted && <HandGuide />}
 
         {/* ── Sound controls ─────────────────────────────────────── */}
         <SfxControls />
-        
+
         {timeRemaining !== null && gameState.gameStarted && (
           <div className={`poker-header__timer ${timeRemaining <= 10 ? 'poker-header__timer--warning' : ''}`}>
             <span className="poker-header__timer-value">{timeRemaining}s</span>
             <div className="poker-header__timer-track">
-              <div 
-                className="poker-header__timer-bar" 
+              <div
+                className="poker-header__timer-bar"
                 style={{ width: `${maxTime > 0 ? (timeRemaining / maxTime) * 100 : 0}%` }}
               />
             </div>
           </div>
         )}
-        
+
         <div className="poker-header__controls">
           <button className="btn-secondary" onClick={handleLeaveLobby}>
             Leave Lobby
           </button>
           {isHost && (
             <>
-            {(!gameState.gameStarted) && (
-              <button className="btn-primary" onClick={handleStartGame}>
-                Start Game
-              </button>
-            )}
-            {isHost && !isPublic && (
-              <button className="btn-secondary" onClick={handleEndLobby}>
-                End Lobby
-              </button>
-            )}
+              {(!gameState.gameStarted) && (
+                <button className="btn-primary" onClick={handleStartGame}>
+                  Start Game
+                </button>
+              )}
+              {isHost && !isPublic && (
+                <button className="btn-secondary" onClick={handleEndLobby}>
+                  End Lobby
+                </button>
+              )}
             </>
           )}
         </div>
@@ -914,7 +923,7 @@ function Poker() {
           </div>
         )}
       </div>
-      
+
       <div className="poker-main">
         <div className="poker-table-wrapper">
           <div className="poker-table">
@@ -922,7 +931,7 @@ function Poker() {
               <div className="poker-table__logo">
                 <img src={tableLogo} alt="Bulk Games" />
               </div>
-              
+
               <div className="poker-table__community">
                 <AnimatePresence mode="popLayout">
                   {gameState.communityCards.map((card, i) => {
@@ -946,12 +955,12 @@ function Poker() {
                   <div key={`empty-${i}`} className="poker-card poker-card--empty" />
                 ))}
               </div>
-              
+
               <div className="poker-table__pot">
                 <span className="poker-table__pot-label">Pot</span>
                 <span key={gameState.pot} className="poker-table__pot-amount">${gameState.pot}</span>
               </div>
-              
+
               {gameState.showdownResults && gameState.winners && (
                 <div className="poker-showdown">
                   {gameState.showdownResults.filter(r => r.winnings > 0).map((result, i) => {
@@ -970,7 +979,7 @@ function Poker() {
               {/* Win celebration stars */}
               <WinCelebration show={!!celebration} effectId={celebration?.effectId || 'stars'} />
             </div>
-            
+
             <div className="poker-table__seats">
               {gameState.players.map((player, index) => (
                 <PlayerSeat
@@ -988,7 +997,7 @@ function Poker() {
             </div>
           </div>
         </div>
-        
+
         <div className="poker-log">
           <div className="poker-log__title">Action Log</div>
           <div className="poker-log__entries">
@@ -1014,7 +1023,7 @@ function Poker() {
           </div>
         </div>
       </div>
-      
+
       {gameState.gameStarted && (
         <div className="poker-bottom-bar">
           {gameState.myHoleCards.length > 0 && (
@@ -1056,7 +1065,7 @@ function Poker() {
           )}
         </div>
       )}
-      
+
       {!gameState.gameStarted && (
         <div className="poker-waiting">
           <h3>Waiting for game to start...</h3>
