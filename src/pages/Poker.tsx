@@ -303,7 +303,13 @@ function PlayerSeat({
         </div>
       )}
 
-      {/* Removed: poker-seat__cards — no hidden cards under avatars */}
+      {player.revealedWinningCards && player.revealedWinningCards.length > 0 && (
+        <div className="poker-seat__cards">
+          {player.revealedWinningCards.map((card, i) => (
+            <CardDisplay key={cardKey(card)} card={card} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -921,8 +927,6 @@ function Poker() {
           {isSpectator && <span className="poker-header__spectator-badge">Spectating</span>}
         </div>
 
-        {gameState.gameStarted && <HandGuide />}
-
         {/* ── Sound controls ─────────────────────────────────────── */}
         <SfxControls />
 
@@ -1160,6 +1164,8 @@ function Poker() {
           {!isHost && <p className="muted">Waiting for host to start the game...</p>}
         </div>
       )}
+
+      {gameState.gameStarted && <HandGuide />}
     </div>
   )
 }
