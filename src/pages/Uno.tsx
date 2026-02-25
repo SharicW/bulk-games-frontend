@@ -17,7 +17,7 @@ const BORDER_MAP: Record<string, string> = {
   border_neon: 'cosmetic-border--neon',
   border_fire: 'cosmetic-border--fire',
   border_ice: 'cosmetic-border--ice',
-  border_emerald: 'cosmetic-border--emerald',
+  border_starlight: 'cosmetic-border--starlight',
   border_purple: 'cosmetic-border--purple',
   border_ruby: 'cosmetic-border--ruby',
 }
@@ -1056,16 +1056,16 @@ function Uno() {
           </button>
           {isHost && (
             <>
-            {state.phase !== 'playing' && (
-              <button className="btn-primary" onClick={handleStartGame} style={{ width: 'auto', padding: '8px 16px' }}>
-                Start Game
-              </button>
-            )}
-            {isHost && !isPublic && (
-              <button className="btn-secondary" onClick={handleEndLobby} style={{ width: 'auto', padding: '8px 16px' }}>
-                End Lobby
-              </button>
-            )}
+              {state.phase !== 'playing' && (
+                <button className="btn-primary" onClick={handleStartGame} style={{ width: 'auto', padding: '8px 16px' }}>
+                  Start Game
+                </button>
+              )}
+              {isHost && !isPublic && (
+                <button className="btn-secondary" onClick={handleEndLobby} style={{ width: 'auto', padding: '8px 16px' }}>
+                  End Lobby
+                </button>
+              )}
             </>
           )}
         </div>
@@ -1182,27 +1182,10 @@ function Uno() {
           {isSpectator ? (
             <div className="uno-actions">
               <div className="uno-actions__status">
-                {state.phase === 'lobby' && (
-                  <>
-                    <span className="uno-actions__turn">👁 Spectating</span>
-                    <span className="muted">Waiting for the game to start...</span>
-                  </>
-                )}
-                {state.phase === 'playing' && (
-                  <>
-                    <span className="uno-actions__turn">👁 Spectating</span>
-                    <span className="muted">{currentPlayer?.nickname || 'Player'}'s turn</span>
-                  </>
-                )}
-                {state.phase === 'finished' && (() => {
-                  const winner = state.players.find(p => p.playerId === state.winnerId)
-                  return (
-                    <>
-                      <span className="uno-actions__turn">🏆 {winner?.nickname || 'Someone'} won!</span>
-                      <span className="muted">Waiting for the next round...</span>
-                    </>
-                  )
-                })()}
+                <div className="uno-actions__status">
+                  <span className="uno-actions__turn">👁 Spectating</span>
+                  <span className="muted">{currentPlayer?.nickname || 'Player'}'s turn</span>
+                </div>
               </div>
               <div className="uno-actions__buttons">
                 <button className="btn-secondary uno-actions__btn" onClick={() => (window.location.href = '/main-menu')}>
@@ -1211,99 +1194,95 @@ function Uno() {
               </div>
             </div>
           ) : (
-          <div className="uno-actions">
-            <div className="uno-actions__status">
-              {isMyTurn ? (
-                <>
-                  <span className="uno-actions__turn">Your turn</span>
-                  {drawnPlayable ? (
-                    <span className="muted">You drew a playable card - play it or pass</span>
-                  ) : hasAnyPlayable ? (
-                    <span className="muted">Play a card</span>
-                  ) : (
-                    <span className="muted">No playable cards - draw 1</span>
-                  )}
-                </>
-              ) : (
-                <>
-                  <span className="uno-actions__turn">
-                    {state.phase === 'playing' ? `${currentPlayer?.nickname || 'Player'}'s turn` : 'Waiting...'}
-                  </span>
-                  {me && <span className="muted">You have {myHand.length} cards</span>}
-                </>
-              )}
-            </div>
+            <div className="uno-actions">
+              <div className="uno-actions__status">
+                {isMyTurn ? (
+                  <>
+                    <span className="uno-actions__turn">Your turn</span>
+                    {drawnPlayable ? (
+                      <span className="muted">You drew a playable card - play it or pass</span>
+                    ) : hasAnyPlayable ? (
+                      <span className="muted">Play a card</span>
+                    ) : (
+                      <span className="muted">No playable cards - draw 1</span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span className="uno-actions__turn">
+                      {state.phase === 'playing' ? `${currentPlayer?.nickname || 'Player'}'s turn` : 'Waiting...'}
+                    </span>
+                    {me && <span className="muted">You have {myHand.length} cards</span>}
+                  </>
+                )}
+              </div>
 
-            <div className="uno-actions__buttons">
-              {isMyTurn && !drawnPlayable && (
-                <button
-                  className="btn-primary uno-actions__btn"
-                  onClick={() => {
-                    // Guard: don't start if sendAction will bail out early
-                    if (!state || actionPendingRef.current) return
-                    sfx.play('draw')
-                    // Snapshot current hand IDs for fallback state-based detection
-                    const snap = new Set(myHand.map((c: UnoCard) => c.id))
-                    pendingDrawSnapRef.current = snap
-                    // Do NOT start the flying animation yet — wait for ACK so the
-                    // real card face is known before the card starts flying.
-                    // This prevents any purple/back placeholder from appearing.
-                    sendAction({ type: 'draw' }, {
-                      onFailure: () => {
-                        // Action failed — clear snapshot, no animation started
-                        pendingDrawSnapRef.current = null
-                      },
-                      onAck: (result) => {
-                        // PRIMARY: ACK includes drawnCard → start flight with real face immediately
-                        if (result?.drawnCard) {
+              <div className="uno-actions__buttons">
+                {isMyTurn && !drawnPlayable && (
+                  <button
+                    className="btn-primary uno-actions__btn"
+                    onClick={() => {
+                      // Guard: don't start if sendAction will bail out early
+                      if (!state || actionPendingRef.current) return
+                      sfx.play('draw')
+                      // Snapshot current hand IDs for fallback state-based detection
+                      const snap = new Set(myHand.map((c: UnoCard) => c.id))
+                      pendingDrawSnapRef.current = snap
+                      // OPTIMISTIC: start the flying animation immediately with a card back
+                      setDrawFlying({ drawnCard: null })
+                      sendAction({ type: 'draw' }, {
+                        onFailure: () => {
+                          // Action failed — clear snapshot, reset animation
                           pendingDrawSnapRef.current = null
-                          setDrawFlying({ drawnCard: result.drawnCard as UnoCard })
-                          return
-                        }
-                        // FALLBACK A: diff the hand from ACK gameState
-                        if (result?.gameState && pendingDrawSnapRef.current) {
-                          const myPid = state.myPlayerId
-                          const newHand: UnoCard[] =
-                            result.gameState.hands?.[myPid] ??
-                            result.gameState.hands?.[String(myPid)] ??
-                            []
-                          const newCard = newHand.find((c: UnoCard) => !snap.has(c.id))
-                          if (newCard) {
+                          setDrawFlying(null)
+                        },
+                        onAck: (result) => {
+                          // PRIMARY: ACK includes drawnCard → update flight with real face
+                          if (result?.drawnCard) {
                             pendingDrawSnapRef.current = null
-                            setDrawFlying({ drawnCard: newCard })
+                            setDrawFlying({ drawnCard: result.drawnCard as UnoCard })
                             return
                           }
-                        }
-                        // FALLBACK B: card face unknown — start with card back;
-                        // the state-broadcast useEffect will reveal face when state arrives.
-                        // Still better than purple placeholder: shows UNO card back instead.
-                        setDrawFlying({ drawnCard: null })
-                      },
-                    })
-                  }}
-                  disabled={hasAnyPlayable || actionPending}
-                >
-                  {actionPending ? '...' : 'Draw'}
+                          // FALLBACK A: diff the hand from ACK gameState
+                          if (result?.gameState && pendingDrawSnapRef.current) {
+                            const myPid = state.myPlayerId
+                            const newHand: UnoCard[] =
+                              result.gameState.hands?.[myPid] ??
+                              result.gameState.hands?.[String(myPid)] ??
+                              []
+                            const newCard = newHand.find((c: UnoCard) => !snap.has(c.id))
+                            if (newCard) {
+                              pendingDrawSnapRef.current = null
+                              setDrawFlying({ drawnCard: newCard })
+                              return
+                            }
+                          }
+                        },
+                      })
+                    }}
+                    disabled={hasAnyPlayable || actionPending}
+                  >
+                    {actionPending ? '...' : 'Draw'}
+                  </button>
+                )}
+                {isMyTurn && drawnPlayable && (
+                  <button
+                    className="btn-secondary uno-actions__btn"
+                    onClick={() => {
+                      sfx.play('card_select')
+                      sendAction({ type: 'pass' })
+                    }}
+                    disabled={actionPending}
+                  >
+                    {actionPending ? '...' : 'Pass'}
+                  </button>
+                )}
+                {/* UNO/Catch buttons removed — now handled via server-driven UNO prompt modal */}
+                <button className="btn-secondary uno-actions__btn" onClick={() => (window.location.href = '/main-menu')}>
+                  Back to Main Menu
                 </button>
-              )}
-              {isMyTurn && drawnPlayable && (
-                <button
-                  className="btn-secondary uno-actions__btn"
-                  onClick={() => {
-                    sfx.play('card_select')
-                    sendAction({ type: 'pass' })
-                  }}
-                  disabled={actionPending}
-                >
-                  {actionPending ? '...' : 'Pass'}
-                </button>
-              )}
-              {/* UNO/Catch buttons removed — now handled via server-driven UNO prompt modal */}
-              <button className="btn-secondary uno-actions__btn" onClick={() => (window.location.href = '/main-menu')}>
-                Back to Main Menu
-              </button>
+              </div>
             </div>
-          </div>
           )}
 
           {!isSpectator && <div className="uno-hand" ref={handRef} aria-label="Your hand">
@@ -1366,7 +1345,7 @@ function Uno() {
       {/* ── UNO Prompt Modal (fair: server-driven button position) ── */}
       <Modal
         isOpen={!!state.unoPrompt?.active}
-        onClose={() => {}}
+        onClose={() => { }}
         title="UNO!"
       >
         {state.unoPrompt && (() => {
