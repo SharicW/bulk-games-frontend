@@ -3558,18 +3558,12 @@ hr.divider {
   box-shadow: 0 0 10px rgba(127, 219, 255, 0.45), inset 0 0 4px rgba(127, 219, 255, 0.12);
 }
 
-.cosmetic-border--emerald .shop-item__avatar-demo,
-.cosmetic-border--emerald .poker-seat__avatar,
-.cosmetic-border--emerald .uno-seat__avatar,
-.cosmetic-border--emerald .profile-avatar__preview {
-  border: 3px solid #00a550;
-  box-shadow: 0 0 8px rgba(0, 165, 80, 0.5), 0 0 20px rgba(0, 165, 80, 0.2);
-  animation: cosmeticEmeraldPulse 2.2s ease-in-out infinite;
-}
-
-@keyframes cosmeticEmeraldPulse {
-  0%, 100% { box-shadow: 0 0 6px rgba(0, 165, 80, 0.35), 0 0 14px rgba(0, 165, 80, 0.12); }
-  50%       { box-shadow: 0 0 16px rgba(0, 165, 80, 0.75), 0 0 32px rgba(0, 165, 80, 0.3); }
+.cosmetic-border--starlight .shop-item__avatar-demo,
+.cosmetic-border--starlight .poker-seat__avatar,
+.cosmetic-border--starlight .uno-seat__avatar,
+.cosmetic-border--starlight .profile-avatar__preview {
+  border: 3px solid #e0e7ff;
+  box-shadow: 0 0 10px rgba(224, 231, 255, 0.6), inset 0 0 5px rgba(224, 231, 255, 0.3);
 }
 
 .cosmetic-border--purple .shop-item__avatar-demo,
