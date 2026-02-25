@@ -32,7 +32,7 @@ function MainMenu() {
     const t = window.setInterval(load, 3500)
     return () => { stopped = true; window.clearInterval(t) }
   }, [isLoggedIn])
-  
+
   const [joinModalOpen, setJoinModalOpen] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [currentGame, setCurrentGame] = useState<'poker' | 'uno'>('poker')
@@ -52,12 +52,12 @@ function MainMenu() {
     setCurrentGame(game)
     setError(null)
     setLoading(true)
-    
+
     try {
       if (game === 'poker') {
         await pokerSocket.connect()
         const result = await pokerSocket.createLobby()
-        
+
         if (result.success && result.code) {
           setCreatedCode(result.code)
           setCreateModalOpen(true)
@@ -83,43 +83,12 @@ function MainMenu() {
     }
   }
 
-  const handleJoinSubmit = async () => {
+  const handleJoinSubmit = () => {
     if (joinCode.trim().length === 0) return
-    
-    setLoading(true)
-    setError(null)
-    
-    try {
-      if (currentGame === 'poker') {
-        await pokerSocket.connect()
-        
-        const result = await pokerSocket.joinLobby(joinCode.toUpperCase())
-        
-        if (result.success) {
-          setJoinModalOpen(false)
-          window.open(`/game/poker?lobby=${joinCode.toUpperCase()}`, '_blank')
-        } else {
-          setError(result.error || 'Failed to join lobby')
-        }
-      } else {
-        await unoSocket.connect()
-        const code = joinCode.toUpperCase()
 
-        const result = await unoSocket.joinLobby(code)
-
-        if (result.success) {
-          setJoinModalOpen(false)
-          window.open(`/game/uno?lobby=${code}`, '_blank')
-        } else {
-          setError(result.error || 'Failed to join lobby')
-        }
-      }
-    } catch (err) {
-      setError('Failed to connect to server')
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
+    const code = joinCode.toUpperCase()
+    setJoinModalOpen(false)
+    window.open(`/game/${currentGame}?lobby=${code}`, '_blank')
   }
 
   const handleCreateConfirm = () => {
@@ -135,7 +104,7 @@ function MainMenu() {
           <p className="eyebrow">Games</p>
           <h1>Main Menu</h1>
         </div>
-        
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span className="muted" style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Role:</span>
           <span
@@ -267,9 +236,9 @@ function MainMenu() {
         </div>
         {error && <p className="field-error">{error}</p>}
         <div className="form-actions">
-          <button 
-            className="btn-primary" 
-            onClick={handleJoinSubmit} 
+          <button
+            className="btn-primary"
+            onClick={handleJoinSubmit}
             disabled={joinCode.trim().length === 0 || loading}
           >
             {loading ? 'Joining...' : 'Join Game'}
@@ -301,8 +270,8 @@ function MainMenu() {
         </div>
         {error && <p className="field-error" style={{ textAlign: 'center' }}>{error}</p>}
         <div className="form-actions">
-          <button 
-            className="btn-primary" 
+          <button
+            className="btn-primary"
             onClick={handleCreateConfirm}
             disabled={!createdCode}
           >
