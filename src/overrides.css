@@ -136,11 +136,11 @@
   .sidebar__brand-wrapper {
     flex-shrink: 0;
     /* Constrain logo so it doesn't eat up the entire row */
-    max-width: 44px;
+    max-width: 56px;
   }
 
   .sidebar__brand-logo {
-    width: 44px;
+    width: 56px;
     height: auto;
   }
 
@@ -162,6 +162,7 @@
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
   }
+
   .sidebar__main::-webkit-scrollbar {
     display: none;
   }
@@ -211,11 +212,11 @@
   }
 
   .sidebar__brand-wrapper {
-    max-width: 36px;
+    max-width: 48px;
   }
 
   .sidebar__brand-logo {
-    width: 36px;
+    width: 48px;
   }
 
   .sidebar__avatar {
@@ -232,7 +233,7 @@
     align-items: flex-start !important;
   }
 
-  .page-header-row > div:last-child {
+  .page-header-row>div:last-child {
     width: 100%;
     flex-wrap: wrap;
     gap: 6px !important;
@@ -241,9 +242,10 @@
 
 /* ── Shop header row ───────────────────────────────────────────── */
 @media (max-width: 480px) {
+
   /* Shop balance + page title: wrap if needed */
   .shop-header-row,
-  .page-shell > div:first-child {
+  .page-shell>div:first-child {
     flex-wrap: wrap;
   }
 }
