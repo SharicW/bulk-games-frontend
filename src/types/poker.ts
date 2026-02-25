@@ -38,12 +38,14 @@ export interface ClientPlayer {
   holeCards: Card[] | null;
   equippedBorder: string | null;
   equippedEffect: string | null;
+  /** Subset of hole cards revealed by the winner at showdown */
+  revealedWinningCards?: Card[];
 }
 
 export interface ActionLogEntry {
   playerId: string;
   nickname: string;
-  action: PlayerAction;
+  action: PlayerAction | string;
   amount?: number;
   timestamp: number;
 }
