@@ -39,11 +39,11 @@ function Leaderboards() {
     let cancelled = false
     loadingRef.current = true
     setErr('')
-    Promise.all([
-      getCached('me:coins', () => apiGetMyRank('coins')),
-      getCached('me:wins', () => apiGetMyRank('wins')),
-      getCached(`top:${by}`, () => apiGetLeaderboard(by, 10)),
-    ])
+    const p1 = getCached('me:coins', () => apiGetMyRank('coins'));
+    const p2 = getCached('me:wins', () => apiGetMyRank('wins'));
+    const p3 = getCached(`top:${by}`, () => apiGetLeaderboard(by, 10));
+
+    Promise.all([p1, p2, p3])
       .then(([a, b, c]) => {
         if (cancelled) return
         setMeCoins(a.me)
