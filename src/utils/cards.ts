@@ -16,7 +16,7 @@ const cardImages = import.meta.glob<{ default: string }>(
  * Fix: extract face-card URLs at module-init time so preloadPokerCards()
  * can load them synchronously (not in an idle batch).
  * ────────────────────────────────────────────────────────────────────── */
-const FACE_CARD_FOLDERS = new Set(['jack', 'queen', 'king', 'A']);
+const FACE_CARD_FOLDERS = new Set(['jack', 'queen', 'king', 'ace']);
 
 /**
  * Production URLs for face cards only (J, Q, K, A across all 4 suits).
@@ -138,7 +138,7 @@ const rankToFolder: Record<Rank, string> = {
   'J': 'jack',
   'Q': 'queen',
   'K': 'king',
-  'A': 'A'
+  'A': 'ace'
 };
 
 // Map rank to file prefix
@@ -163,12 +163,12 @@ export function getCardImageUrl(card: Card): string {
   const prefix = rankToPrefix[card.rank];
   const filename = `${prefix}_of_${card.suit}.png`;
   const path = `/assets/cards/${folder}/${filename}`;
-  
+
   const imageModule = cardImages[path];
   if (imageModule) {
     return imageModule.default;
   }
-  
+
   // Fallback to direct path if not found in glob.
   // In production the hashed URL won't be resolved this way, so
   // CardDisplay will fall back to its CSS text rendering.
@@ -190,7 +190,7 @@ export function formatCard(card: Card): string {
     clubs: '♣',
     spades: '♠'
   };
-  
+
   return `${card.rank}${suitSymbols[card.suit]}`;
 }
 
