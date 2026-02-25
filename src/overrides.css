@@ -1,0 +1,258 @@
+#sidebar {
+  padding-top: 36px;
+}
+
+.sidebar__content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.sidebar__brand-wrapper {
+  flex-shrink: 0;
+}
+
+.sidebar__main {
+  flex: 1;
+  margin-top: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sidebar__divider {
+  height: 1px;
+  width: 100%;
+  margin: 0;
+  background: var(--color-border);
+}
+
+.sidebar__avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--color-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.sidebar__avatar--empty {
+  border-style: dashed;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.sidebar__profile {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: none;
+}
+
+.profile-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.profile-card__title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.profile-card__content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.profile-card__helper {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.profile-card .form-group {
+  margin-bottom: 0;
+}
+
+.profile-card .form-actions {
+  margin-top: 0;
+}
+
+.profile-avatar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* ── Mobile sidebar overrides ──────────────────────────────────── */
+
+/* On mobile (<= 768px), sidebar becomes a sticky horizontal nav bar.
+   The style.css breakpoint at 640px turns #sidebar relative, but
+   641–768px still had it fixed/overlapping. Unify here at 768px.       */
+@media (max-width: 768px) {
+  #sidebar {
+    /* Override fixed positioning — become a normal-flow horizontal bar */
+    position: relative !important;
+    width: 100% !important;
+    height: auto !important;
+    top: auto !important;
+    left: auto !important;
+    bottom: auto !important;
+    padding: 8px 12px !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    border-right: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    z-index: 20;
+  }
+
+  /* The inner .sidebar container also needs horizontal */
+  .sidebar {
+    width: 100%;
+  }
+
+  .sidebar__content {
+    /* Horizontal layout: brand | links | profile */
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    height: auto;
+    width: 100%;
+  }
+
+  .sidebar__brand-wrapper {
+    flex-shrink: 0;
+    /* Constrain logo so it doesn't eat up the entire row */
+    max-width: 56px;
+  }
+
+  .sidebar__brand-logo {
+    width: 56px;
+    height: auto;
+  }
+
+  /* Hide "MAIN" label — wastes horizontal space */
+  .sidebar__label {
+    display: none;
+  }
+
+  .sidebar__main {
+    /* Horizontal links row */
+    flex-direction: row;
+    margin-top: 0;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* Allow scrolling without visible scrollbar */
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .sidebar__main::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sidebar__links {
+    flex-direction: row;
+    gap: 2px;
+  }
+
+  .sidebar__link {
+    padding: 8px 10px;
+    gap: 6px;
+    white-space: nowrap;
+    /* Ensure touch targets are at least 44px tall (Apple HIG) */
+    min-height: 44px;
+  }
+
+  .sidebar__divider {
+    display: none;
+  }
+
+  .sidebar__profile {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+    flex-shrink: 0;
+  }
+
+  /* Remove the fixed sidebar's left margin from main content */
+  #main {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+}
+
+/* Small phones (≤ 480px): hide link text, show icons only */
+@media (max-width: 480px) {
+  .sidebar__text {
+    display: none;
+  }
+
+  .sidebar__link {
+    padding: 8px;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .sidebar__brand-wrapper {
+    max-width: 48px;
+  }
+
+  .sidebar__brand-logo {
+    width: 48px;
+  }
+
+  .sidebar__avatar {
+    width: 22px;
+    height: 22px;
+  }
+}
+
+/* ── Profile page header controls row ─────────────────────────── */
+/* The logged-in profile header has email + badge + logout button.
+   Wrap on small screens to prevent overflow.                        */
+@media (max-width: 540px) {
+  .page-header-row {
+    align-items: flex-start !important;
+  }
+
+  .page-header-row>div:last-child {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px !important;
+  }
+}
+
+/* ── Shop header row ───────────────────────────────────────────── */
+@media (max-width: 480px) {
+
+  /* Shop balance + page title: wrap if needed */
+  .shop-header-row,
+  .page-shell>div:first-child {
+    flex-wrap: wrap;
+  }
+}
+
+/* ── Auth card: full-width on very small screens ───────────────── */
+@media (max-width: 430px) {
+  .auth-card {
+    padding: 20px 16px;
+  }
+}
