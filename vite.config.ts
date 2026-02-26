@@ -22,7 +22,7 @@ export default defineConfig({
 
   preview: {
     host: true,
-    allowedHosts: ['.railway.app'],
+    allowedHosts: ['.railway.app', '.bulk-games.online'],
   },
 
   build: {
