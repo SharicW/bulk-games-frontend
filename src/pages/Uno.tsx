@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuth } from '../hooks/useAuth'
+import { useIsMobile } from '../hooks/useIsMobile'
 import Modal from '../components/Modal'
 import WinCelebration from '../components/WinCelebration'
 import SfxControls from '../components/SfxControls'
@@ -431,6 +432,10 @@ function Uno() {
   const lobbyCode = (searchParams.get('lobby') || '').toUpperCase()
   const { isLoggedIn, user, loading: authLoading } = useAuth()
 
+  const isMobile = useIsMobile()
+  const isMobileRef = useRef(isMobile)
+  useEffect(() => { isMobileRef.current = isMobile }, [isMobile])
+
   const userIdRef = useRef<string | null>(null)
 
   const [connected, setConnected] = useState(false)
@@ -491,10 +496,6 @@ function Uno() {
   const deckRef = useRef<HTMLDivElement>(null)
   const handRef = useRef<HTMLDivElement>(null)
 
-  // ── Turn timer: local ticking countdown seeded by server turnTimeRemaining ─
-  const [timerSeconds, setTimerSeconds] = useState<number | null>(null)
-  const timerIntervalRef = useRef<number | null>(null)
-
   /**
    * Apply a new UNO game state only if its version is newer than what we have.
    * If a version gap is detected, request a full resync.
@@ -550,7 +551,20 @@ function Uno() {
             const delay = performance.now() - devReceiveTimeRef.current
             if (delay > 200) console.warn(`[uno:perf] Render delay: ${delay.toFixed(0)}ms (state→RAF)`)
           }
-          setState(s)
+          setState((prev: UnoClientState | null) => {
+            if (isMobileRef.current && prev) {
+              let identical = true;
+              const keys = Object.keys(s) as Array<keyof UnoClientState>;
+              for (const k of keys) {
+                if (s[k] !== prev[k]) {
+                  identical = false;
+                  break;
+                }
+              }
+              if (identical) return prev;
+            }
+            return s;
+          })
         }
       })
     }
@@ -886,40 +900,6 @@ function Uno() {
     }
   }, [lobbyCode, isLoggedIn, user?.id, applyState])
 
-  // ── Turn timer: sync from server state, tick locally ─────────────
-  useEffect(() => {
-    const serverMs = state?.turnTimeRemaining ?? null
-    if (serverMs === null || serverMs === undefined || state?.phase !== 'playing') {
-      setTimerSeconds(null)
-      if (timerIntervalRef.current) {
-        window.clearInterval(timerIntervalRef.current)
-        timerIntervalRef.current = null
-      }
-      return
-    }
-    // Seed from server value (rounded up)
-    setTimerSeconds(Math.ceil(serverMs / 1000))
-    // Clear any old interval
-    if (timerIntervalRef.current) window.clearInterval(timerIntervalRef.current)
-    // Tick every second
-    timerIntervalRef.current = window.setInterval(() => {
-      setTimerSeconds(prev => {
-        if (prev === null || prev <= 1) {
-          if (timerIntervalRef.current) window.clearInterval(timerIntervalRef.current!)
-          timerIntervalRef.current = null
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-    return () => {
-      if (timerIntervalRef.current) window.clearInterval(timerIntervalRef.current)
-      timerIntervalRef.current = null
-    }
-    // Re-seed whenever the server provides a new turnTimeRemaining (i.e. turn changes)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.turnTimeRemaining, state?.currentPlayerIndex, state?.phase])
-
   const sendAction = useCallback(async (
     action: { type: 'play'; cardId: string; chosenColor?: UnoColor } | { type: 'draw' } | { type: 'pass' },
     { onFailure, onAck }: { onFailure?: () => void; onAck?: (result: any) => void } = {},
@@ -1229,16 +1209,7 @@ function Uno() {
           </div>
         </div>
 
-        <div className="uno-log">
-          <div className="uno-log__title">Action Log</div>
-          <div className="uno-log__entries">
-            {state.actionLog.slice().reverse().map((e) => (
-              <div key={e.id} className="uno-log__entry">
-                <span className="uno-log__text">{e.text}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <UnoActionLog actionLog={state.actionLog} />
       </div>
 
       {state.phase === 'lobby' && (
@@ -1301,10 +1272,8 @@ function Uno() {
               </div>
 
               {/* Turn timer — visible to all players */}
-              {timerSeconds !== null && state.phase === 'playing' && (
-                <span className={`uno-timer${timerSeconds <= 10 ? ' uno-timer--urgent' : ''}`}>
-                  ⏱ {timerSeconds}s
-                </span>
+              {state.phase === 'playing' && (
+                <UnoTimer timeRemainingMs={state.turnTimeRemaining} />
               )}
 
               <div className="uno-actions__buttons">
@@ -1395,7 +1364,7 @@ function Uno() {
                     data-card-id={c.id}
                     style={{ x: xVal, rotate: rot, transformOrigin: 'center bottom' }}
                     animate={{ y: yVal, zIndex: 1, scale: 1 }}
-                    whileHover={canClick ? { y: yVal - 26, scale: 1.15, zIndex: 50 } : undefined}
+                    whileHover={canClick && !isMobileRef.current ? { y: yVal - 26, scale: 1.15, zIndex: 50 } : undefined}
                     transition={{ duration: 0.18, ease: 'easeOut' }}
                   >
                     <UnoCardImg
@@ -1529,3 +1498,53 @@ function Uno() {
 }
 
 export default Uno
+
+// ── Isolated UI Components (Memoized to prevent ticking/layout re-renders) ──
+
+const UnoTimer = memo(function UnoTimer({ timeRemainingMs }: { timeRemainingMs?: number | null }) {
+  const [seconds, setSeconds] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (timeRemainingMs === undefined || timeRemainingMs === null || timeRemainingMs <= 0) {
+      setSeconds(null)
+      return
+    }
+    const secs = Math.ceil(timeRemainingMs / 1000)
+    setSeconds(secs)
+
+    const endTime = Date.now() + timeRemainingMs
+    const calc = () => Math.max(0, Math.ceil((endTime - Date.now()) / 1000))
+
+    const interval = window.setInterval(() => {
+      const s = calc()
+      setSeconds(s)
+      if (s <= 0) window.clearInterval(interval)
+    }, 1000)
+
+    return () => window.clearInterval(interval)
+  }, [timeRemainingMs])
+
+  if (seconds === null) return null
+
+  return (
+    <span className={`uno-timer${seconds <= 10 ? ' uno-timer--urgent' : ''}`}>
+      ⏱ {seconds}s
+    </span>
+  )
+})
+
+const UnoActionLog = memo(function UnoActionLog({ actionLog }: { actionLog: { id: string; text: string }[] }) {
+  return (
+    <div className="uno-log">
+      <div className="uno-log__title">Action Log</div>
+      <div className="uno-log__entries">
+        {actionLog.slice().reverse().map((e) => (
+          <div key={e.id} className="uno-log__entry">
+            <span className="uno-log__text">{e.text}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+})
+
