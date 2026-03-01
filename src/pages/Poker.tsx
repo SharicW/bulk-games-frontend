@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef, useMemo, memo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../hooks/useAuth'
+import { useIsMobile } from '../hooks/useIsMobile'
 import { pokerSocket } from '../services/socket'
 import { getCardImageUrl, formatCard, getSuitColor, preloadPokerCards } from '../utils/cards'
 import type { ClientGameState, ClientPlayer, Card, PlayerAction } from '../types/poker'
@@ -433,11 +434,13 @@ function Poker() {
   const lobbyCode = searchParams.get('lobby') || ''
   const { isLoggedIn, user, loading: authLoading } = useAuth()
 
+  const isMobile = useIsMobile()
+  const isMobileRef = useRef(isMobile)
+  useEffect(() => { isMobileRef.current = isMobile }, [isMobile])
+
   const [gameState, setGameState] = useState<ClientGameState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [connected, setConnected] = useState(false)
-  const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
-  const [maxTime, setMaxTime] = useState(30)
   // null = no choice yet (or not our turn), true/false = decided
   const [showdownChoice, setShowdownChoice] = useState<boolean | null>(null)
 
@@ -503,7 +506,20 @@ function Poker() {
         latestStateRef.current = null
         if (s) {
           const patched = patchPlayerStack(s)
-          setGameState(patched)
+          setGameState((prev: ClientGameState | null) => {
+            if (isMobileRef.current && prev) {
+              let identical = true;
+              const keys = Object.keys(patched) as Array<keyof ClientGameState>;
+              for (const k of keys) {
+                if (patched[k] !== prev[k]) {
+                  identical = false;
+                  break;
+                }
+              }
+              if (identical) return prev;
+            }
+            return patched;
+          })
         }
       })
     }
@@ -734,34 +750,6 @@ function Poker() {
     }
   }, [lobbyCode, isLoggedIn, user?.id, applyState])
 
-  // Timer countdown
-  useEffect(() => {
-    if (gameState?.turnTimeRemaining != null && gameState.turnTimeRemaining > 0) {
-      const secs = Math.ceil(gameState.turnTimeRemaining / 1000)
-      setMaxTime(secs)
-      setTimeRemaining(secs)
-
-      if (timerRef.current) clearInterval(timerRef.current)
-
-      timerRef.current = window.setInterval(() => {
-        setTimeRemaining(prev => {
-          if (prev === null || prev <= 1) {
-            if (timerRef.current) clearInterval(timerRef.current)
-            return 0
-          }
-          return prev - 1
-        })
-      }, 1000)
-    } else {
-      setTimeRemaining(null)
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-  }, [gameState?.turnTimeRemaining, gameState?.currentPlayerIndex])
-
   // Reset showdownChoice when a new hand starts
   useEffect(() => {
     setShowdownChoice(null)
@@ -948,16 +936,8 @@ function Poker() {
         {/* ── Sound controls ─────────────────────────────────────── */}
         <SfxControls />
 
-        {timeRemaining !== null && gameState.gameStarted && (
-          <div className={`poker-header__timer ${timeRemaining <= 10 ? 'poker-header__timer--warning' : ''}`}>
-            <span className="poker-header__timer-value">{timeRemaining}s</span>
-            <div className="poker-header__timer-track">
-              <div
-                className="poker-header__timer-bar"
-                style={{ width: `${maxTime > 0 ? (timeRemaining / maxTime) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
+        {gameState.gameStarted && (
+          <PokerTimer timeRemainingMs={gameState.turnTimeRemaining} />
         )}
 
         <div className="poker-header__controls">
@@ -1062,30 +1042,7 @@ function Poker() {
           </div>
         </div>
 
-        <div className="poker-log">
-          <div className="poker-log__title">Action Log</div>
-          <div className="poker-log__entries">
-            {gameState.showdownResults && gameState.winners && (
-              gameState.showdownResults.filter(r => r.winnings > 0).map((result, i) => {
-                const winner = gameState.players.find(p => p.playerId === result.playerId)
-                return (
-                  <div key={`w-${i}`} className="poker-log__entry poker-log__entry--winner">
-                    <span className="poker-log__name">{winner?.nickname}</span>
-                    <span className="poker-log__action">Winner — {result.hand.name}</span>
-                    <span className="poker-log__amount">+${result.winnings}</span>
-                  </div>
-                )
-              })
-            )}
-            {gameState.actionLog.slice().reverse().map((entry, i) => (
-              <div key={i} className="poker-log__entry">
-                <span className="poker-log__name">{entry.nickname}</span>
-                <span className="poker-log__action">{entry.action}</span>
-                {entry.amount && <span className="poker-log__amount">${entry.amount}</span>}
-              </div>
-            ))}
-          </div>
-        </div>
+        <PokerActionLog gameState={gameState} />
       </div>
 
       {gameState.gameStarted && (
@@ -1104,7 +1061,7 @@ function Poker() {
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.9, y: -8 }}
                       transition={{ duration: 0.5, delay: i * 0.09, ease: 'easeOut' }}
-                      whileHover={{ scale: 1.18, y: -22, zIndex: 9999 }}
+                      whileHover={!isMobileRef.current ? { scale: 1.18, y: -22, zIndex: 9999 } : undefined}
                       style={{ position: 'relative', zIndex: i, transformOrigin: 'center bottom' }}
                     >
                       <CardDisplay card={card} highlighted={hl} dimmed={bestHand !== null && !hl} />
@@ -1189,3 +1146,79 @@ function Poker() {
 }
 
 export default Poker
+
+// ── Isolated UI Components (Memoized to prevent ticking/layout re-renders) ──
+
+const PokerTimer = memo(function PokerTimer({
+  timeRemainingMs
+}: {
+  timeRemainingMs?: number | null
+}) {
+  const [seconds, setSeconds] = useState<number | null>(null)
+  const [maxTime, setMaxTime] = useState(30)
+
+  useEffect(() => {
+    if (timeRemainingMs === undefined || timeRemainingMs === null || timeRemainingMs <= 0) {
+      setSeconds(null)
+      return
+    }
+    const secs = Math.ceil(timeRemainingMs / 1000)
+    setMaxTime(secs)
+    setSeconds(secs)
+
+    const endTime = Date.now() + timeRemainingMs
+    const calc = () => Math.max(0, Math.ceil((endTime - Date.now()) / 1000))
+
+    const interval = window.setInterval(() => {
+      const s = calc()
+      setSeconds(s)
+      if (s <= 0) window.clearInterval(interval)
+    }, 1000)
+
+    return () => window.clearInterval(interval)
+  }, [timeRemainingMs])
+
+  if (seconds === null) return null
+
+  return (
+    <div className={`poker-header__timer ${seconds <= 10 ? 'poker-header__timer--warning' : ''}`}>
+      <span className="poker-header__timer-value">{seconds}s</span>
+      <div className="poker-header__timer-track">
+        <div
+          className="poker-header__timer-bar"
+          style={{ width: `${maxTime > 0 ? (seconds / maxTime) * 100 : 0}%` }}
+        />
+      </div>
+    </div>
+  )
+})
+
+const PokerActionLog = memo(function PokerActionLog({ gameState }: { gameState: ClientGameState }) {
+  return (
+    <div className="poker-log">
+      <div className="poker-log__title">Action Log</div>
+      <div className="poker-log__entries">
+        {gameState.showdownResults && gameState.winners && (
+          gameState.showdownResults.filter(r => r.winnings > 0).map((result, i) => {
+            const winner = gameState.players.find(p => p.playerId === result.playerId)
+            return (
+              <div key={`w-${i}`} className="poker-log__entry poker-log__entry--winner">
+                <span className="poker-log__name">{winner?.nickname}</span>
+                <span className="poker-log__action">Winner — {result.hand.name}</span>
+                <span className="poker-log__amount">+${result.winnings}</span>
+              </div>
+            )
+          })
+        )}
+        {gameState.actionLog.slice().reverse().map((entry, i) => (
+          <div key={i} className="poker-log__entry">
+            <span className="poker-log__name">{entry.nickname}</span>
+            <span className="poker-log__action">{entry.action}</span>
+            {entry.amount && <span className="poker-log__amount">${entry.amount}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+})
+
