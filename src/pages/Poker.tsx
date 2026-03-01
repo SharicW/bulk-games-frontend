@@ -185,10 +185,16 @@ function KickerPill({ cards }: { cards: Card[] }) {
   return (
     <motion.div
       className="poker-kicker-pill"
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -4 }}
+      initial={{ opacity: 0, scale: 0.9, x: 10 }}
+      animate={{ opacity: 1, scale: 1, x: 0 }}
+      exit={{ opacity: 0, scale: 0.9, x: 10 }}
       transition={{ duration: 0.3 }}
+      style={{
+        position: 'absolute',
+        top: '12px',
+        right: '12px',
+        zIndex: 50,
+      }}
     >
       Kicker: {label}
     </motion.div>
@@ -251,7 +257,7 @@ function HandGuide() {
 
 // ── Player seat component ──────────────────────────────────────────
 
-function PlayerSeat({
+const PlayerSeat = memo(function PlayerSeat({
   player,
   isDealer,
   isSmallBlind,
@@ -312,11 +318,11 @@ function PlayerSeat({
       )}
     </div>
   )
-}
+})
 
 // ── Action panel component ─────────────────────────────────────────
 
-function ActionPanel({
+const ActionPanel = memo(function ActionPanel({
   gameState,
   onAction
 }: {
@@ -418,7 +424,7 @@ function ActionPanel({
       )}
     </div>
   )
-}
+})
 
 // ── Main Poker page ────────────────────────────────────────────────
 
@@ -445,6 +451,7 @@ function Poker() {
   const showdownLockRef = useRef(false)
   const pendingStateRef = useRef<ClientGameState | null>(null)
   const showdownTimeoutRef = useRef<number | null>(null)
+  const latestStateRef = useRef<ClientGameState | null>(null)
 
   // ── Version tracking for synchronization ──────────────────────
   const lastVersionRef = useRef<number>(0)
@@ -485,12 +492,22 @@ function Poker() {
     }
 
     lastVersionRef.current = incomingVersion
-    const patched = patchPlayerStack(incoming)
 
     // TTFC logging
     logTTFC()
 
-    setGameState(patched)
+    // ── Coalesce: only commit the latest state per animation frame ──────
+    if (!latestStateRef.current) {
+      requestAnimationFrame(() => {
+        const s = latestStateRef.current
+        latestStateRef.current = null
+        if (s) {
+          const patched = patchPlayerStack(s)
+          setGameState(patched)
+        }
+      })
+    }
+    latestStateRef.current = incoming
   }, [])
 
   // ── SFX: state-diff effect — fires sounds based on Poker state transitions ──
@@ -713,6 +730,7 @@ function Poker() {
       if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
       showdownLockRef.current = false
       pendingStateRef.current = null
+      pokerSocket.disconnect()
     }
   }, [lobbyCode, isLoggedIn, user?.id, applyState])
 
@@ -1071,7 +1089,7 @@ function Poker() {
       </div>
 
       {gameState.gameStarted && (
-        <div className="poker-bottom-bar">
+        <div className="poker-bottom-bar" style={{ position: 'relative' }}>
           {gameState.myHoleCards.length > 0 && (
             <div className="poker-my-cards">
               <AnimatePresence mode="popLayout">
