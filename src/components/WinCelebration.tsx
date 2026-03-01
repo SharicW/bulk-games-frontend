@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useMemo } from 'react'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 type CelebrationEffectId = 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'water_burst' | 'sakura_petals' | 'gold_stars' | 'rainbow_burst'
 
@@ -40,10 +41,12 @@ function conf(effectId: CelebrationEffectId): {
 }
 
 export default function WinCelebration({ show, effectId = 'stars' }: { show: boolean; effectId?: CelebrationEffectId }) {
+  const isMobile = useIsMobile()
   const c = conf(effectId)
   const particles = useMemo<Particle[]>(
-    () =>
-      Array.from({ length: c.count }, (_, i) => ({
+    () => {
+      const actualCount = isMobile ? Math.min(c.count, 12) : c.count
+      return Array.from({ length: actualCount }, (_, i) => ({
         id: i,
         x:
           effectId === 'fire_burst' || effectId === 'water_burst'
@@ -82,9 +85,10 @@ export default function WinCelebration({ show, effectId = 'stars' }: { show: boo
                 ? 420 + Math.random() * 220
                 : -(60 + Math.random() * 170),
         rotate: Math.random() * 540 - 270,
-      })),
+      }))
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [show, effectId],
+    [show, effectId, isMobile],
   )
 
   return (
