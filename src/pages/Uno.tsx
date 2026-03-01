@@ -232,7 +232,17 @@ const UnoCardImg = memo(function UnoCardImg({ card, images, className, dimmed, g
 }) {
   const fId = faceId(card.face)
   const variants = images[fId] || []
-  const src = variants.length ? variants[Math.abs(hashStr(card.id)) % variants.length] : null
+  let src = variants.length ? variants[Math.abs(hashStr(card.id)) % variants.length] : null
+
+  // Ensure strict single source of truth: validate logical color matches the mapped image
+  if (src && card.face.kind !== 'wild' && card.face.kind !== 'wild4' && 'color' in card.face) {
+    const logicalColor = card.face.color.toLowerCase()
+    // A mismatch here means the resolved image path does not contain the expected suit/color.
+    if (!src.toLowerCase().includes(logicalColor)) {
+      console.error(`[UnoCardImg] CRITICAL MISMATCH: Logical color is ${logicalColor}, but image src is ${src}. Discarding image to prevent desync.`)
+      src = null
+    }
+  }
 
   return (
     <motion.button
@@ -248,7 +258,7 @@ const UnoCardImg = memo(function UnoCardImg({ card, images, className, dimmed, g
       {src ? (
         <img src={src} alt={cardLabel(card.face)} decoding="async" loading="eager" />
       ) : (
-        <div className="uno-card__fallback">
+        <div className="uno-card__fallback" data-color={'color' in card.face ? card.face.color : 'wild'}>
           {cardLabel(card.face)}
         </div>
       )}
@@ -296,13 +306,13 @@ const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, drawnCar
   const holdTimerRef = useRef<number | null>(null)
 
   // After motion completes: dismiss quickly so the hand card reveal is seamless.
-  // 60ms is just enough for the browser to paint the final frame before unmount.
+  // We hold for 250ms per UX request so the card visually pauses at the hand.
   // Fallback (drawnCard null): hold up to 280ms for state-broadcast, then dismiss.
   useEffect(() => {
     if (!motionDone) return
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current)
     if (drawnCard) {
-      holdTimerRef.current = window.setTimeout(() => onCompleteRef.current(), 60)
+      holdTimerRef.current = window.setTimeout(() => onCompleteRef.current(), 250)
     } else {
       holdTimerRef.current = window.setTimeout(() => onCompleteRef.current(), 280)
     }
@@ -310,11 +320,11 @@ const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, drawnCar
   }, [motionDone]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // If card face arrives while holding (state-broadcast fallback path only),
-  // cancel the long-wait timer and replace with the quick dismiss timer.
+  // cancel the long-wait timer and replace with the 250ms dismiss timer.
   useEffect(() => {
     if (!motionDone || !drawnCard) return
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current)
-    holdTimerRef.current = window.setTimeout(() => onCompleteRef.current(), 60)
+    holdTimerRef.current = window.setTimeout(() => onCompleteRef.current(), 250)
     return () => { if (holdTimerRef.current) clearTimeout(holdTimerRef.current) }
   }, [drawnCard, motionDone])
 
@@ -335,8 +345,8 @@ const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, drawnCar
     <motion.div
       className="uno-flying-card"
       initial={{ x: fromX, y: fromY, scale: 1.12, opacity: 1, rotate: -8 }}
-      animate={{ x: toX, y: toY, scale: 0.88, opacity: 0.9, rotate: 0 }}
-      transition={{ duration: 0.34, ease: [0.22, 0.68, 0.35, 1] }}
+      animate={{ x: toX, y: toY, scale: 0.88, opacity: motionDone ? 0 : 0.9, rotate: 0 }}
+      transition={{ duration: 0.6, ease: [0.22, 0.68, 0.35, 1] }}
       onAnimationComplete={() => setMotionDone(true)}
     >
       {/* Card back — hidden from the start when real face is known at mount */}
@@ -576,7 +586,8 @@ function Uno() {
       set.add(c.id)
     }
     return set
-  }, [state, myHand, topCard, drawnPlayable])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.currentColor, myHand.map((c: UnoCard) => c.id).join(','), topCard?.id, drawnPlayable?.cardId])
 
   const hasAnyPlayable = playable.size > 0
 
@@ -591,8 +602,34 @@ function Uno() {
     let hand = myHand
     if (pendingPlayCardId) hand = hand.filter(c => c.id !== pendingPlayCardId)
     if (drawFlying?.drawnCard) hand = hand.filter(c => c.id !== drawFlying.drawnCard!.id)
+
+    // Stable client-side sorting: Red -> (Action) -> Green -> ... -> Yellow -> Blue -> Wild
+    hand = [...hand].sort((a, b) => {
+      const colorScore: Record<string, number> = { red: 1, green: 2, yellow: 3, blue: 4, wild: 5, wild4: 6 };
+
+      const getScore = (face: UnoCardFace) =>
+        face.kind === 'wild' ? colorScore.wild :
+          face.kind === 'wild4' ? colorScore.wild4 :
+            colorScore[face.color] || 99;
+
+      const scoreA = getScore(a.face);
+      const scoreB = getScore(b.face);
+
+      // 1. Group by color 
+      if (scoreA !== scoreB) return scoreA - scoreB;
+
+      // 2. Sort by value / action kind within same color
+      const valA = a.face.kind === 'number' ? a.face.value : a.face.kind === 'skip' ? 10 : a.face.kind === 'reverse' ? 11 : a.face.kind === 'draw2' ? 12 : 13;
+      const valB = b.face.kind === 'number' ? b.face.value : b.face.kind === 'skip' ? 10 : b.face.kind === 'reverse' ? 11 : b.face.kind === 'draw2' ? 12 : 13;
+      if (valA !== valB) return valA - valB;
+
+      // 3. Strict stable fallback by ID to avoid visual jitter
+      return a.id.localeCompare(b.id);
+    });
+
     return hand
-  }, [myHand, pendingPlayCardId, drawFlying])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myHand.map((c: UnoCard) => c.id).join(','), pendingPlayCardId, drawFlying?.drawnCard?.id])
 
   // Clear pendingPlayCardId once server confirms the card left the hand
   useEffect(() => {
@@ -845,6 +882,7 @@ function Uno() {
       unsubscribeDrawFx()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
+      unoSocket.disconnect()
     }
   }, [lobbyCode, isLoggedIn, user?.id, applyState])
 
