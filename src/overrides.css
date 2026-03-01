@@ -256,3 +256,24 @@
     padding: 20px 16px;
   }
 }
+
+/* ── Mobile Performance Overrides ──────────────────────────────── */
+/* Disables expensive GPU operations like shadows and blurs on weaker devices */
+@media (max-width: 768px) {
+
+  .uno-page,
+  .poker-page,
+  .uno-table,
+  .poker-table,
+  .uno-table__felt,
+  .poker-table__felt,
+  .poker-my-cards__animated,
+  .uno-hand__card,
+  .poker-card,
+  .uno-card,
+  .win-celebration-overlay {
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    filter: none !important;
+  }
+}
