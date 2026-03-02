@@ -223,13 +223,13 @@ function seatPos(i: number, n: number) {
   return { left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' as const }
 }
 
-const UnoCardImg = memo(function UnoCardImg({ card, images, className, dimmed, glow, onClick }: {
+const UnoCardImg = memo(function UnoCardImg({ card, images, className, dimmed, glow, onCardClick }: {
   card: UnoCard
   images: Record<string, string[]>
   className?: string
   dimmed?: boolean
   glow?: boolean
-  onClick?: () => void
+  onCardClick?: (c: UnoCard) => void
 }) {
   const fId = faceId(card.face)
   const variants = images[fId] || []
@@ -249,8 +249,8 @@ const UnoCardImg = memo(function UnoCardImg({ card, images, className, dimmed, g
     <motion.button
       type="button"
       className={`uno-card ${className || ''} ${dimmed ? 'uno-card--dim' : ''} ${glow ? 'uno-card--glow' : ''}`}
-      onClick={onClick}
-      disabled={!onClick}
+      onClick={() => onCardClick?.(card)}
+      disabled={!onCardClick}
       title={cardLabel(card.face)}
       initial={{ opacity: 0, scale: 0.85 }}
       animate={{ opacity: dimmed ? 0.45 : 1, scale: 1 }}
@@ -553,15 +553,7 @@ function Uno() {
           }
           setState((prev: UnoClientState | null) => {
             if (isMobileRef.current && prev) {
-              let identical = true;
-              const keys = Object.keys(s) as Array<keyof UnoClientState>;
-              for (const k of keys) {
-                if (s[k] !== prev[k]) {
-                  identical = false;
-                  break;
-                }
-              }
-              if (identical) return prev;
+              if (s.version === prev.version) return prev;
             }
             return s;
           })
@@ -601,7 +593,7 @@ function Uno() {
     }
     return set
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.currentColor, myHand.map((c: UnoCard) => c.id).join(','), topCard?.id, drawnPlayable?.cardId])
+  }, [state?.currentColor, myHand, topCard?.id, drawnPlayable?.cardId])
 
   const hasAnyPlayable = playable.size > 0
 
@@ -643,7 +635,7 @@ function Uno() {
 
     return hand
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myHand.map((c: UnoCard) => c.id).join(','), pendingPlayCardId, drawFlying?.drawnCard?.id])
+  }, [myHand, pendingPlayCardId, drawFlying?.drawnCard?.id])
 
   // Clear pendingPlayCardId once server confirms the card left the hand
   useEffect(() => {
@@ -1362,9 +1354,9 @@ function Uno() {
                     key={c.id}
                     className="uno-hand__card"
                     data-card-id={c.id}
-                    style={{ x: xVal, rotate: rot, transformOrigin: 'center bottom' }}
-                    animate={{ y: yVal, zIndex: 1, scale: 1 }}
-                    whileHover={canClick && !isMobileRef.current ? { y: yVal - 26, scale: 1.15, zIndex: 50 } : undefined}
+                    style={{ transformOrigin: 'center bottom' }}
+                    animate={{ x: xVal, y: yVal, rotate: rot, zIndex: i + 1, scale: 1 }}
+                    whileHover={canClick && !isMobileRef.current ? { y: yVal - 26, scale: 1.15, zIndex: 100 } : undefined}
                     transition={{ duration: 0.18, ease: 'easeOut' }}
                   >
                     <UnoCardImg
@@ -1372,7 +1364,7 @@ function Uno() {
                       images={images}
                       glow={canClick}
                       dimmed={dim}
-                      onClick={canClick ? () => onCardClick(c) : undefined}
+                      onCardClick={canClick ? onCardClick : undefined}
                     />
                   </motion.div>
                 )
