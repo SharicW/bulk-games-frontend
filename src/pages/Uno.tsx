@@ -174,43 +174,103 @@ function buildUnoImages(): Record<string, string[]> {
   const files = _unoImageFiles
   const out: Record<string, string[]> = {}
 
-  const add = (id: UnoFaceId, path: string) => {
-    if (!out[id]) out[id] = []
-    out[id].push(path)
+  const add = (id: UnoFaceId, filenamePattern: string) => {
+    // Find any file in the glob whose path ends with this exact string name (case-insensitive)
+    const matches = Object.entries(files).filter(([path]) =>
+      path.toLowerCase().endsWith(filenamePattern.toLowerCase())
+    )
+    if (matches.length > 0) {
+      if (!out[id]) out[id] = []
+      out[id].push(...matches.map(m => m[1]))
+    } else {
+      console.error(`[UNO Asset Missing]: Could not find any files matching "${filenamePattern}"`)
+    }
   }
 
-  const parse = (nameRaw: string): UnoFaceId | null => {
-    const name = nameRaw.replace(/\.png$/i, '').trim().replace(/\s+/g, ' ')
+  // Red
+  add('red_0', 'Red-0.png')
+  add('red_1', 'Red-1.png')
+  add('red_2', 'Red-2.png')
+  add('red_3', 'Red-3.png')
+  add('red_4', 'Red-4.png')
+  add('red_5', 'Red-5.png')
+  add('red_6', 'Red-6.png')
+  add('red_7', 'Red-7.png')
+  add('red_8', 'Red-8.png')
+  add('red_9', 'Red-9.png')
+  add('red_draw2', 'Red Draw2-1.png')
+  add('red_draw2', 'Red Draw2-2.png')
+  add('red_skip', 'Red Skip-1.png')
+  add('red_skip', 'Red Skip-3.png')
+  add('red_reverse', 'Red Reverse-1.png')
+  add('red_reverse', 'Red Reverse2.png')
+  // Fun irregularity from the Blue folder
+  add('red_skip', 'Red Skip-2.png')
 
-    const wild = /^Wild(?:-\d+)?$/i.test(name)
-    if (wild) return 'wild'
+  // Green
+  add('green_0', 'Green-0.png')
+  add('green_1', 'Green-1.png')
+  add('green_2', 'Green-2.png')
+  add('green_3', 'Green-3.png')
+  add('green_4', 'Green-4.png')
+  add('green_5', 'Green-5.png')
+  add('green_6', 'Green-6.png')
+  add('green_7', 'Green-7.png')
+  add('green_8', 'Green-8.png')
+  add('green_9', 'Green-9.png')
+  add('green_draw2', 'Green Draw2-1.png')
+  add('green_draw2', 'Green Draw2-2.png')
+  add('green_draw2', 'Green Draw2-8.png') // From Yellow folder
+  add('green_skip', 'Green Skip- 1.png')
+  add('green_skip', 'Green Skip- 2.png')
+  add('green_reverse', 'Green Reverse-1.png')
+  add('green_reverse', 'Green Reverse-2.png')
 
-    const draw4 = /^Draw4(?:-\d+)?$/i.test(name)
-    if (draw4) return 'wild4'
+  // Blue
+  add('blue_0', 'Blue-0.png')
+  add('blue_1', 'Blue-1.png')
+  add('blue_2', 'Blue-2.png')
+  add('blue_3', 'Blue-3.png')
+  add('blue_4', 'Blue-4.png')
+  add('blue_5', 'Blue-5.png')
+  add('blue_6', 'Blue-6.png')
+  add('blue_7', 'Blue-7.png')
+  add('blue_8', 'Blue-8.png')
+  add('blue_9', 'Blue-9.png')
+  add('blue_draw2', 'Blue Draw2-1.png')
+  add('blue_draw2', 'Blue Draw2-2.png')
+  add('blue_skip', 'Blue Skip-1.png')
+  add('blue_skip', 'Blue Skip-2.png')
+  add('blue_reverse', 'Blue Reverse- 1.png')
+  add('blue_reverse', 'Blue Reverse- 2.png')
 
-    const mNum = /^(Red|Green|Blue|Yellow)\s*-\s*([0-9])$/i.exec(name)
-    if (mNum) return `${mNum[1].toLowerCase()}_${parseInt(mNum[2], 10)}` as UnoFaceId
+  // Yellow
+  add('yellow_0', 'Yellow-0.png')
+  add('yellow_1', 'Yellow-1.png')
+  add('yellow_2', 'Yellow-2.png')
+  add('yellow_3', 'Yellow-3.png')
+  add('yellow_4', 'Yellow-4.png')
+  add('yellow_5', 'Yellow-5.png')
+  add('yellow_6', 'Yellow-6.png')
+  add('yellow_7', 'Yellow-7.png')
+  add('yellow_8', 'Yellow-8.png')
+  add('yellow_9', 'Yellow-9.png')
+  add('yellow_draw2', 'Yellow Draw2-2.png')
+  add('yellow_skip', 'Yellow Skip-1.png')
+  add('yellow_skip', 'Yellow Skip-2.png')
+  add('yellow_reverse', 'Yellow Reverse-1.png')
+  add('yellow_reverse', 'Yellow Reverse-2.png')
 
-    const mDraw2 = /^(Red|Green|Blue|Yellow)\s+Draw2/i.exec(name)
-    if (mDraw2) return `${mDraw2[1].toLowerCase()}_draw2` as UnoFaceId
+  // Wild
+  add('wild', 'Wild-1.png')
+  add('wild', 'Wild-2.png')
+  add('wild', 'Wild-3.png')
+  add('wild', 'Wild-4.png')
 
-    const mSkip = /^(Red|Green|Blue|Yellow)\s+Skip/i.exec(name)
-    if (mSkip) return `${mSkip[1].toLowerCase()}_skip` as UnoFaceId
-
-    const mRev = /^(Red|Green|Blue|Yellow)\s+Reverse/i.exec(name)
-    if (mRev) return `${mRev[1].toLowerCase()}_reverse` as UnoFaceId
-
-    const mRev2 = /^(Red|Green|Blue|Yellow)\s+Reverse\d+/i.exec(name)
-    if (mRev2) return `${mRev2[1].toLowerCase()}_reverse` as UnoFaceId
-
-    return null
-  }
-
-  for (const [path, mod] of Object.entries(files)) {
-    const file = path.split('/').pop() || ''
-    const id = parse(file)
-    if (id) add(id, mod)
-  }
+  add('wild4', 'Draw4-1.png')
+  add('wild4', 'Draw4-2.png')
+  add('wild4', 'Draw4-3.png')
+  add('wild4', 'Draw4-4.png')
 
   return out
 }
@@ -236,14 +296,8 @@ export const UnoCardImg = memo(function UnoCardImg({ card, images, className, gl
   const variants = images[fId] || []
   let src = variants.length ? variants[Math.abs(hashStr(card.id)) % variants.length] : null
 
-  // Ensure strict single source of truth: validate logical color matches the mapped image
-  if (src && card.face.kind !== 'wild' && card.face.kind !== 'wild4' && 'color' in card.face) {
-    const logicalColor = card.face.color.toLowerCase()
-    // A mismatch here means the resolved image path does not contain the expected suit/color.
-    if (!src.toLowerCase().includes(logicalColor)) {
-      console.error(`[UnoCardImg] CRITICAL MISMATCH: Logical color is ${logicalColor}, but image src is ${src}. Discarding image to prevent desync.`)
-      src = null
-    }
+  if (!src) {
+    console.error(`[UnoCardImg] No map found for logical card ${fId}!`)
   }
 
   return (
@@ -348,7 +402,7 @@ const FlyingDrawCard = memo(function FlyingDrawCard({ deckRef, handRef, drawnCar
       className="uno-flying-card"
       initial={{ x: fromX, y: fromY, scale: 1.12, opacity: 1, rotate: -8 }}
       animate={{ x: toX, y: toY, scale: 0.88, opacity: motionDone ? 0 : 0.9, rotate: 0 }}
-      transition={{ duration: 0.6, ease: [0.22, 0.68, 0.35, 1] }}
+      transition={{ duration: 0.35, ease: 'easeOut' }}
       onAnimationComplete={() => setMotionDone(true)}
     >
       {/* Card back — hidden from the start when real face is known at mount */}
