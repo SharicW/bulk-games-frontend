@@ -539,6 +539,11 @@ function Uno() {
   // Saved rect for wild card flying animation (captured before modal opens)
   const pendingWildFromRectRef = useRef<DOMRect | null>(null)
 
+  // ── Decoupled UNO Prompt Overlay ───────────────────────────────
+  // Extracted from main state tree so the modal opens instantaneously without 
+  // blocking on heavy component reconciliations when cards are dealt.
+  const [unoPrompt, setUnoPrompt] = useState<UnoClientState['unoPrompt'] | null>(null)
+
   // ── Draw animation ─────────────────────────────────────────────
   // drawnCard is null while in-flight (card back shown), set to the real
   // card once the state update / ACK reveals it.
@@ -579,9 +584,20 @@ function Uno() {
         if (res.success && res.gameState) {
           lastVersionRef.current = res.gameState.version ?? 0
           setState(res.gameState)
+          setUnoPrompt(res.gameState.unoPrompt)
         }
       }).catch(() => { resyncingRef.current = false })
       // Still apply this state as a fallback
+    }
+
+    // Identical version short-circuit: stops React re-render queue spam
+    if (incomingVersion === lastVersion && lastVersion > 0) {
+      // Only apply independent, volatile visual state changes like prompt appearing 
+      // without re-rendering the massive hands and discard pile arrays.
+      if (incoming.unoPrompt?.active !== latestStateRef.current?.unoPrompt?.active) {
+        setUnoPrompt(incoming.unoPrompt)
+      }
+      return
     }
 
     lastVersionRef.current = incomingVersion
@@ -848,11 +864,10 @@ function Uno() {
         if (stopped) return
         if (result.success && result.gameState) {
           const v = result.gameState.version ?? 0
-          // Use Math.max so a slow ACK never downgrades the tracked version
           lastVersionRef.current = Math.max(lastVersionRef.current, v)
-          // Clear any pending RAF payload so it doesn't overwrite this newer state
           latestStateRef.current = null
           setState(result.gameState)
+          setUnoPrompt(result.gameState.unoPrompt)
           logTTFC()
           setError(null)
         } else {
@@ -939,28 +954,32 @@ function Uno() {
       setOppDrawFlash({ id: `drawfx_${p.playerId}_${Date.now()}` })
     })
 
+    // Immediate UNO Prompt pop-up (bypasses heavy state queue)
+    const unsubscribeUnoPrompt = unoSocket.on('uno:prompt', (payload) => {
+      setUnoPrompt(payload as UnoClientState['unoPrompt'])
+    })
+
     // ── Page-visibility restore (mobile: tab returns from background) ──
-    // iOS/Android silently kills WebSockets when the tab is backgrounded.
-    // The server keeps thinking the old socket is alive for ~50 s (ping timeout).
-    // When the user returns to the tab:
-    //   • If the socket auto-reconnected:  the 'connect' handler above already
-    //     triggered join() so nothing extra is needed here.
-    //   • If the socket still APPEARS connected (client hasn't detected the
-    //     stale connection yet): we request a fresh state to avoid being stuck
-    //     on stale data (e.g. missing the "second player joined" update).
+    const lastHiddenTimeRef = { current: 0 }
     const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        lastHiddenTimeRef.current = Date.now()
+        return
+      }
+
       if (document.visibilityState !== 'visible' || stopped || !lobbyCode) return
-      if (unoSocket.isConnected()) {
-        if (IS_DEV) console.log('[uno:visibility] tab visible, requesting state resync')
+
+      // Guard: Only request state if backgrounded for more than 5 seconds.
+      // Brief backgrounding (swiping down notification shade) shouldn't spam resync.
+      const timeHidden = Date.now() - lastHiddenTimeRef.current
+      if (unoSocket.isConnected() && timeHidden > 5000) {
+        if (IS_DEV) console.log(`[uno:visibility] tab visible after ${timeHidden}ms, requesting state resync`)
         unoSocket.requestState(lobbyCode).then(res => {
           if (!stopped && res.success && res.gameState) {
-            // applyState uses strict-less-than (<), so same-version re-broadcasts
-            // are applied as-is.  No need to reset lastVersionRef here.
             applyState(res.gameState)
           }
         }).catch(() => { /* ignore — socket will reconnect on its own */ })
       }
-      // If not connected: socket.io auto-reconnect + 'connect' handler handles it
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
@@ -972,6 +991,7 @@ function Uno() {
       unsubscribeEnd()
       unsubscribeConnect()
       unsubscribeDrawFx()
+      unsubscribeUnoPrompt()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
       unoSocket.disconnect()
@@ -1280,7 +1300,7 @@ function Uno() {
           <h3>Waiting for game to start...</h3>
           <p>{state.players.length} player{state.players.length !== 1 ? 's' : ''} in lobby</p>
           <div className="uno-waiting__players">
-            {state.players.map(p => (
+            {state.players.map((p: any) => (
               <div key={p.playerId} className="uno-waiting__player">
                 <div className="uno-waiting__avatar">
                   {p.avatarUrl ? <img src={p.avatarUrl} alt={p.nickname} /> : '👤'}
@@ -1358,7 +1378,7 @@ function Uno() {
                           pendingDrawSnapRef.current = null
                           setDrawFlying(null)
                         },
-                        onAck: (result) => {
+                        onAck: (result: any) => {
                           // PRIMARY: ACK includes drawnCard → update flight with real face
                           if (result?.drawnCard) {
                             pendingDrawSnapRef.current = null
@@ -1450,13 +1470,13 @@ function Uno() {
 
       {/* ── UNO Prompt Modal (fair: server-driven button position) ── */}
       <Modal
-        isOpen={!!state.unoPrompt?.active}
+        isOpen={!!unoPrompt?.active}
         onClose={() => { }}
         title="UNO!"
       >
-        {state.unoPrompt && (() => {
-          const target = state.players.find(p => p.playerId === state.unoPrompt!.targetPlayerId);
-          const iAmTarget = state.unoPrompt!.targetPlayerId === uid;
+        {unoPrompt && (() => {
+          const target = state.players.find((p: any) => p.playerId === unoPrompt!.targetPlayerId);
+          const iAmTarget = unoPrompt!.targetPlayerId === uid;
           return (
             <div className="uno-prompt">
               <p className="uno-prompt__info">
@@ -1467,12 +1487,15 @@ function Uno() {
                   className={`btn-primary uno-prompt__btn ${iAmTarget ? 'uno-prompt__btn--call' : 'uno-prompt__btn--catch'}`}
                   style={{
                     position: 'absolute',
-                    left: `${state.unoPrompt!.buttonPos.x}%`,
-                    top: `${state.unoPrompt!.buttonPos.y}%`,
+                    left: `${unoPrompt!.buttonPos.x}%`,
+                    top: `${unoPrompt!.buttonPos.y}%`,
                     transform: 'translate(-50%, -50%)',
                   }}
                   onClick={() => {
                     sfx.play('card_select')
+                    // Optimistic hide so the user isn't stuck waiting for roundtrip
+                    setUnoPrompt((prev: any) => prev ? { ...prev, active: false } : null)
+
                     if (iAmTarget) {
                       unoSocket.callUno(state.lobbyCode);
                     } else {
