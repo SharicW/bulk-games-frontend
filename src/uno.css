@@ -529,11 +529,6 @@
   cursor: default;
 }
 
-.uno-card--dim {
-  opacity: 0.45;
-  filter: brightness(0.75);
-}
-
 .uno-card--glow {
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.45), 0 10px 24px rgba(0, 0, 0, 0.38);
 }
