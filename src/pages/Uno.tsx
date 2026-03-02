@@ -9,6 +9,8 @@ import SfxControls from '../components/SfxControls'
 import tableLogo from '/assets/BULK_GAMES_LOGO.png'
 import { unoSocket } from '../services/socket'
 import { sfx } from '../services/sfx'
+import { UnoMobileHand } from '../components/UnoMobileHand'
+import { UnoDesktopHand } from '../components/UnoDesktopHand'
 import type { UnoCard, UnoCardFace, UnoClientState, UnoColor } from '../types/uno'
 
 /** Build CSS classes for player cosmetics from game-state data */
@@ -109,7 +111,7 @@ function preloadUnoCards(): void {
 }
 preloadUnoCards()
 
-type UnoFaceId =
+export type UnoFaceId =
   | `${UnoColor}_${0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`
   | `${UnoColor}_skip`
   | `${UnoColor}_reverse`
@@ -117,22 +119,22 @@ type UnoFaceId =
   | 'wild'
   | 'wild4'
 
-function clamp(n: number, a: number, b: number) {
+export function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n))
 }
 
-function faceId(face: UnoCardFace): UnoFaceId {
+export function faceId(face: UnoCardFace): UnoFaceId {
   if (face.kind === 'wild') return 'wild'
   if (face.kind === 'wild4') return 'wild4'
   if (face.kind === 'number') return `${face.color}_${face.value}` as UnoFaceId
   return `${face.color}_${face.kind}` as UnoFaceId
 }
 
-function isWild(face: UnoCardFace) {
+export function isWild(face: UnoCardFace) {
   return face.kind === 'wild' || face.kind === 'wild4'
 }
 
-function isPlayableCard(card: UnoCardFace, top: UnoCardFace | null, currentColor: UnoColor | null): boolean {
+export function isPlayableCard(card: UnoCardFace, top: UnoCardFace | null, currentColor: UnoColor | null): boolean {
   if (isWild(card)) return true
   if (!top) return true
   if (!currentColor) return true
@@ -145,11 +147,11 @@ function isPlayableCard(card: UnoCardFace, top: UnoCardFace | null, currentColor
   return false
 }
 
-function hasColor(hand: UnoCard[], color: UnoColor) {
+export function hasColor(hand: UnoCard[], color: UnoColor) {
   return hand.some(c => c.face.kind !== 'wild' && c.face.kind !== 'wild4' && 'color' in c.face && c.face.color === color)
 }
 
-function cardLabel(face: UnoCardFace) {
+export function cardLabel(face: UnoCardFace) {
   if (face.kind === 'wild') return 'Wild'
   if (face.kind === 'wild4') return 'Wild Draw Four'
   const c = face.color[0].toUpperCase() + face.color.slice(1)
@@ -159,7 +161,7 @@ function cardLabel(face: UnoCardFace) {
   return `${c} Skip`
 }
 
-function hashStr(s: string) {
+export function hashStr(s: string) {
   let h = 0
   for (let i = 0; i < s.length; i++) {
     h = (h << 5) - h + s.charCodeAt(i)
@@ -223,11 +225,10 @@ function seatPos(i: number, n: number) {
   return { left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' as const }
 }
 
-const UnoCardImg = memo(function UnoCardImg({ card, images, className, dimmed, glow, onCardClick }: {
+export const UnoCardImg = memo(function UnoCardImg({ card, images, className, glow, onCardClick }: {
   card: UnoCard
   images: Record<string, string[]>
   className?: string
-  dimmed?: boolean
   glow?: boolean
   onCardClick?: (c: UnoCard) => void
 }) {
@@ -248,12 +249,12 @@ const UnoCardImg = memo(function UnoCardImg({ card, images, className, dimmed, g
   return (
     <motion.button
       type="button"
-      className={`uno-card ${className || ''} ${dimmed ? 'uno-card--dim' : ''} ${glow ? 'uno-card--glow' : ''}`}
+      className={`uno-card ${className || ''} ${glow ? 'uno-card--glow' : ''}`}
       onClick={() => onCardClick?.(card)}
       disabled={!onCardClick}
       title={cardLabel(card.face)}
       initial={{ opacity: 0, scale: 0.85 }}
-      animate={{ opacity: dimmed ? 0.45 : 1, scale: 1 }}
+      animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.35, ease: 'easeOut' }}
     >
       {src ? (
@@ -552,8 +553,39 @@ function Uno() {
             if (delay > 200) console.warn(`[uno:perf] Render delay: ${delay.toFixed(0)}ms (state→RAF)`)
           }
           setState((prev: UnoClientState | null) => {
-            if (isMobileRef.current && prev) {
-              if (s.version === prev.version) return prev;
+            if (prev) {
+              const isStateChanged = () => {
+                if (prev.phase !== s.phase) return true;
+                if (prev.currentPlayerIndex !== s.currentPlayerIndex) return true;
+                if (prev.currentColor !== s.currentColor) return true;
+                if (prev.drawPileCount !== s.drawPileCount) return true;
+                if (prev.direction !== s.direction) return true;
+                if (prev.mustCallUno !== s.mustCallUno) return true;
+                if (prev.winnerId !== s.winnerId) return true;
+                if (prev.actionLog?.length !== s.actionLog?.length) return true;
+                if (prev.discardPile?.length !== s.discardPile?.length) return true;
+                if (prev.players.length !== s.players.length) return true;
+                for (let i = 0; i < prev.players.length; i++) {
+                  if (prev.players[i].cardCount !== s.players[i].cardCount ||
+                    prev.players[i].isConnected !== s.players[i].isConnected) return true;
+                }
+                const uid = userIdRef.current;
+                if (uid) {
+                  const hA = prev.hands?.[uid] || [];
+                  const hB = s.hands?.[uid] || [];
+                  if (hA.length !== hB.length) return true;
+                  for (let i = 0; i < hA.length; i++) {
+                    if (hA[i].id !== hB[i].id) return true;
+                  }
+                }
+                if (prev.drawnPlayable?.cardId !== s.drawnPlayable?.cardId) return true;
+                if (prev.unoPrompt?.active !== s.unoPrompt?.active) return true;
+                return false;
+              }
+              if (!isStateChanged()) {
+                if (IS_DEV) console.log('[uno:sync] Dropped timer/version-only update');
+                return prev;
+              }
             }
             return s;
           })
@@ -957,7 +989,7 @@ function Uno() {
     window.location.href = '/main-menu'
   }, [state])
 
-  const onCardClick = (c: UnoCard) => {
+  const onCardClick = useCallback((c: UnoCard) => {
     if (!isMyTurn) return
     if (!playable.has(c.id)) return
     // Don't queue another action while one is already in-flight.
@@ -1000,7 +1032,7 @@ function Uno() {
       // On failure: restore card in hand
       onFailure: () => setPendingPlayCardId(null),
     })
-  }
+  }, [isMyTurn, playable, sendAction])
 
   const chooseWildColor = (color: UnoColor) => {
     if (!pendingWildCardId) return
@@ -1180,22 +1212,7 @@ function Uno() {
                 const uno = state.phase === 'playing' && p.cardCount === 1 && state.mustCallUno !== p.playerId
                 const style = seatPos(idx, state.players.length)
 
-                return (
-                  <div
-                    key={p.playerId}
-                    className={`uno-seat ${isTurn ? 'uno-seat--active' : ''} ${isMe ? 'uno-seat--me' : ''} ${isWinner ? 'uno-seat--winner' : ''} ${!p.isConnected ? 'uno-seat--disconnected' : ''} ${buildCosmeticClasses(p.equippedBorder, p.equippedEffect)}`}
-                    style={style}
-                  >
-                    <div className="uno-seat__avatar">
-                      {p.avatarUrl ? <img src={p.avatarUrl} alt={p.nickname} /> : <span>👤</span>}
-                    </div>
-                    <div className="uno-seat__info">
-                      <span className="uno-seat__name">{p.nickname}</span>
-                      <span className="uno-seat__count">{p.cardCount} cards</span>
-                    </div>
-                    {uno && <div className="uno-seat__uno">UNO!</div>}
-                  </div>
-                )
+                return <UnoPlayerSeat key={p.playerId} player={p} isTurn={isTurn} isMe={isMe} isWinner={isWinner} uno={uno} style={style} />
               })}
             </div>
           </div>
@@ -1337,39 +1354,23 @@ function Uno() {
           )}
 
           {!isSpectator && <div className="uno-hand" ref={handRef} aria-label="Your hand">
-            <div className="uno-hand__fan">
-              {visibleHand.map((c, i) => {
-                const n = visibleHand.length
-                const gap = n <= 5 ? 52 : n <= 9 ? 40 : 28
-                const rotStep = n <= 5 ? 6 : n <= 9 ? 4 : 2.5
-                const center = (n - 1) / 2
-                const offset = i - center
-                const rot = offset * rotStep
-                const xVal = offset * gap
-                const yVal = Math.abs(offset) * 2.5
-                const canClick = isMyTurn && playable.has(c.id)
-                const dim = isMyTurn && !playable.has(c.id)
-                return (
-                  <motion.div
-                    key={c.id}
-                    className="uno-hand__card"
-                    data-card-id={c.id}
-                    style={{ transformOrigin: 'center bottom' }}
-                    animate={{ x: xVal, y: yVal, rotate: rot, zIndex: i + 1, scale: 1 }}
-                    whileHover={canClick && !isMobileRef.current ? { y: yVal - 26, scale: 1.15, zIndex: 100 } : undefined}
-                    transition={{ duration: 0.18, ease: 'easeOut' }}
-                  >
-                    <UnoCardImg
-                      card={c}
-                      images={images}
-                      glow={canClick}
-                      dimmed={dim}
-                      onCardClick={canClick ? onCardClick : undefined}
-                    />
-                  </motion.div>
-                )
-              })}
-            </div>
+            {isMobile ? (
+              <UnoMobileHand
+                visibleHand={visibleHand}
+                playable={playable}
+                images={images}
+                isMyTurn={isMyTurn}
+                onCardClick={onCardClick}
+              />
+            ) : (
+              <UnoDesktopHand
+                visibleHand={visibleHand}
+                playable={playable}
+                images={images}
+                isMyTurn={isMyTurn}
+                onCardClick={onCardClick}
+              />
+            )}
           </div>}
         </div>
       )}
@@ -1522,6 +1523,24 @@ const UnoTimer = memo(function UnoTimer({ timeRemainingMs }: { timeRemainingMs?:
     <span className={`uno-timer${seconds <= 10 ? ' uno-timer--urgent' : ''}`}>
       ⏱ {seconds}s
     </span>
+  )
+})
+
+const UnoPlayerSeat = memo(function UnoPlayerSeat({ player, isTurn, isMe, isWinner, uno, style }: any) {
+  return (
+    <div
+      className={`uno-seat ${isTurn ? 'uno-seat--active' : ''} ${isMe ? 'uno-seat--me' : ''} ${isWinner ? 'uno-seat--winner' : ''} ${!player.isConnected ? 'uno-seat--disconnected' : ''} ${buildCosmeticClasses(player.equippedBorder, player.equippedEffect)}`}
+      style={style}
+    >
+      <div className="uno-seat__avatar">
+        {player.avatarUrl ? <img src={player.avatarUrl} alt={player.nickname} /> : <span>👤</span>}
+      </div>
+      <div className="uno-seat__info">
+        <span className="uno-seat__name">{player.nickname}</span>
+        <span className="uno-seat__count">{player.cardCount} cards</span>
+      </div>
+      {uno && <div className="uno-seat__uno">UNO!</div>}
+    </div>
   )
 })
 
