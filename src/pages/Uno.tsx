@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { useAuth } from '../hooks/useAuth'
-import { useIsMobile } from '../hooks/useIsMobile'
-import Modal from '../components/Modal'
-import WinCelebration from '../components/WinCelebration'
-import SfxControls from '../components/SfxControls'
-import tableLogo from '/assets/BULK_GAMES_LOGO.png'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useAuth, useIsMobile } from '../hooks'
+import { Modal } from '../components/Modal'
+import { WinCelebration } from '../components/WinCelebration'
+import { SfxControls } from '../components/SfxControls'
+import tableLogo from '../assets/logo-white.svg'
+
 import { unoSocket } from '../services/socket'
 import { sfx } from '../services/sfx'
 import { UnoMobileHand } from '../components/UnoMobileHand'
 import { UnoDesktopHand } from '../components/UnoDesktopHand'
 import type { UnoCard, UnoCardFace, UnoClientState, UnoColor } from '../types/uno'
+import { useUnoMobileSync } from '../hooks/useUnoMobileSync'
+import { useUnoDesktopSync } from '../hooks/useUnoDesktopSync'
 
 /** Build CSS classes for player cosmetics from game-state data */
 const BORDER_MAP: Record<string, string> = {
@@ -241,6 +243,7 @@ function buildUnoImages(): Record<string, string[]> {
   add('blue_draw2', 'Blue Draw2-2.png')
   add('blue_skip', 'Blue Skip-1.png')
   add('blue_skip', 'Blue Skip-2.png')
+  add('blue_skip', 'Red Skip-2.png') // Physical filename mistake handling
   add('blue_reverse', 'Blue Reverse- 1.png')
   add('blue_reverse', 'Blue Reverse- 2.png')
 
@@ -469,33 +472,106 @@ const FlyingCard = memo(function FlyingCard({ card, images, fromRect, discardRef
   return (
     <motion.div
       className="uno-flying-card"
-      initial={{ x: fromRect.left + fromRect.width / 2 - 43, y: fromRect.top + fromRect.height / 2 - 62, scale: 1.12, rotate: 0, opacity: 1 }}
-      animate={{ x: toX, y: toY, scale: 1, rotate: (Math.random() - 0.5) * 14, opacity: 1 }}
-      transition={{ duration: 0.34, ease: [0.22, 0.68, 0.35, 1] }}
+      initial={{ x: fromRect.left, y: fromRect.top, scale: 1, opacity: 1, rotate: 0 }}
+      animate={{ x: toX, y: toY, scale: 0.9, opacity: 0, rotate: 15 }}
+      transition={{ duration: 0.28, ease: 'easeIn' }}
       onAnimationComplete={onComplete}
     >
-      {src ? <img src={src} alt="" draggable={false} /> : <div className="uno-card__fallback">{cardLabel(card.face)}</div>}
+      {src ? (
+        <img src={src} className="uno-draw-face" alt="" />
+      ) : (
+        <div className="uno-draw-face" data-color={'color' in card.face ? card.face.color : 'wild'} />
+      )}
     </motion.div>
   )
 })
 
+export default function UnoRouter() {
+  const { isLoggedIn, user } = useAuth()
+  const [lobbyCode, setLobbyCode] = useState<string>('')
+  const [params] = useSearchParams()
+
+  useEffect(() => {
+    const code = params.get('code')
+    if (code) setLobbyCode(code)
+  }, [params])
+
+  const mobileThreshold = 768
+  const isMobileSize = useIsMobile(mobileThreshold)
+
+  // Strict separation of environment logic paths
+  if (isMobileSize) {
+    return <UnoMobilePage lobbyCode={lobbyCode} isLoggedIn={isLoggedIn} userId={user?.id} />
+  }
+  return <UnoDesktopPage lobbyCode={lobbyCode} isLoggedIn={isLoggedIn} userId={user?.id} />
+}
 // Suppress unused-var lint for clamp (used by other utilities)
 void clamp
 
-function Uno() {
+function UnoDesktopPage({ lobbyCode, isLoggedIn, userId }: any) {
+  const sync = useUnoDesktopSync(lobbyCode, isLoggedIn, userId)
+  return <UnoUI lobbyCode={lobbyCode} isLoggedIn={isLoggedIn} userId={userId} sync={sync} isMobile={false} />
+}
+
+function UnoMobilePage({ lobbyCode, isLoggedIn, userId }: any) {
+  const sync = useUnoMobileSync(lobbyCode, isLoggedIn, userId)
+  return <UnoUI lobbyCode={lobbyCode} isLoggedIn={isLoggedIn} userId={userId} sync={sync} isMobile={true} />
+}
+
+export default function UnoRouter() {
   const [searchParams] = useSearchParams()
   const lobbyCode = (searchParams.get('lobby') || '').toUpperCase()
   const { isLoggedIn, user, loading: authLoading } = useAuth()
-
   const isMobile = useIsMobile()
-  const isMobileRef = useRef(isMobile)
-  useEffect(() => { isMobileRef.current = isMobile }, [isMobile])
 
-  const userIdRef = useRef<string | null>(null)
+  // Auth loading
+  if (authLoading) {
+    return (
+      <div className="uno-page uno-page--standalone">
+        <div className="poker-loading">
+          <div className="spinner" />
+          <p>Loading...</p>
+        </div>
+      </div>
+    )
+  }
 
-  const [connected, setConnected] = useState(false)
-  const [state, setState] = useState<UnoClientState | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // Auth gate
+  if (!isLoggedIn) {
+    return (
+      <div className="uno-page uno-page--standalone">
+        <div className="poker-auth-gate">
+          <h2>Login Required</h2>
+          <p>You must be logged in to join UNO lobbies.</p>
+          <a href="/profile" className="btn-primary" style={{ textDecoration: 'none' }}>
+            Go to Profile to Login
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  if (isMobile) {
+    return <UnoMobilePage lobbyCode={lobbyCode} isLoggedIn={isLoggedIn} userId={user?.id} />
+  }
+
+  return <UnoDesktopPage lobbyCode={lobbyCode} isLoggedIn={isLoggedIn} userId={user?.id} />
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Shared UI Shell (Pure View Logic)
+// ─────────────────────────────────────────────────────────────────
+function UnoUI({ lobbyCode, isLoggedIn, userId, sync, isMobile }: {
+  lobbyCode: string
+  isLoggedIn: boolean
+  userId: string | undefined
+  sync: ReturnType<typeof useUnoDesktopSync> | ReturnType<typeof useUnoMobileSync>
+  isMobile: boolean
+}) {
+  const { state, setState, connected, error, setError, unoPrompt, setUnoPrompt, oppDrawFlash, setOppDrawFlash, celebration } = sync
+
+  const userIdRef = useRef<string | null>(userId || null)
+  useEffect(() => { userIdRef.current = userId || null }, [userId])
   const [colorModalOpen, setColorModalOpen] = useState(false)
   const [pendingWildCardId, setPendingWildCardId] = useState<string | null>(null)
 
@@ -540,9 +616,7 @@ function Uno() {
   const pendingWildFromRectRef = useRef<DOMRect | null>(null)
 
   // ── Decoupled UNO Prompt Overlay ───────────────────────────────
-  // Extracted from main state tree so the modal opens instantaneously without 
-  // blocking on heavy component reconciliations when cards are dealt.
-  const [unoPrompt, setUnoPrompt] = useState<UnoClientState['unoPrompt'] | null>(null)
+  // Moved to sync hook
 
   // ── Draw animation ─────────────────────────────────────────────
   // drawnCard is null while in-flight (card back shown), set to the real
@@ -552,7 +626,7 @@ function Uno() {
   // Used to diff state updates and find the newly drawn card.
   const pendingDrawSnapRef = useRef<Set<string> | null>(null)
   // Opponent draw flash: shown when another player draws (uno:drawFx event)
-  const [oppDrawFlash, setOppDrawFlash] = useState<{ id: string } | null>(null)
+  // Moved to Sync Hook
   const deckRef = useRef<HTMLDivElement>(null)
   const handRef = useRef<HTMLDivElement>(null)
 
@@ -664,24 +738,6 @@ function Uno() {
     }
   }, [])
 
-  // Keep a stable ref to user id
-  useEffect(() => {
-    if (user?.id) userIdRef.current = user.id
-  }, [user?.id])
-
-  const uid = user?.id ?? ''
-  const isHost = state?.hostId === uid
-  const isPublic = !!state?.isPublic
-  const me = state?.players.find(p => p.playerId === uid) || null
-  const isSpectator = !!state?.isSpectator
-  const spectatorCount = state?.spectators?.length ?? 0
-  const myHand = state?.hands?.[uid] || []
-  const topCard = state?.discardPile?.length ? state.discardPile[state.discardPile.length - 1] : null
-
-  const currentPlayer = state && state.players[state.currentPlayerIndex]
-  const isMyTurn = !!state && state.phase === 'playing' && currentPlayer?.playerId === uid
-  const drawnPlayable = state?.drawnPlayable?.playerId === uid ? state.drawnPlayable : null
-
   const playable = useMemo(() => {
     if (!state) return new Set<string>()
     const set = new Set<string>()
@@ -723,7 +779,7 @@ function Uno() {
       const scoreA = getScore(a.face);
       const scoreB = getScore(b.face);
 
-      // 1. Group by color 
+      // 1. Group by color
       if (scoreA !== scoreB) return scoreA - scoreB;
 
       // 2. Sort by value / action kind within same color
@@ -742,11 +798,11 @@ function Uno() {
   // Clear pendingPlayCardId once server confirms the card left the hand
   useEffect(() => {
     if (!pendingPlayCardId || !state) return
-    const hand = state.hands?.[uid] || []
+    const hand = state.hands?.[myPlayerId] || []
     if (!hand.some(c => c.id === pendingPlayCardId)) {
       setPendingPlayCardId(null)
     }
-  }, [state, pendingPlayCardId, uid])
+  }, [state, pendingPlayCardId, myPlayerId])
 
   // ── Drawn card detection (state-broadcast path) ─────────────────────────
   // When the server state arrives after a draw action, diff the hand against
@@ -756,247 +812,93 @@ function Uno() {
     if (!drawFlying || drawFlying.drawnCard !== null || !pendingDrawSnapRef.current) return
     const snap = pendingDrawSnapRef.current
     // state.hands[uid] contains REAL cards for the local player (server-personalised)
-    const hand: UnoCard[] = state?.hands?.[uid] ?? state?.hands?.[String(uid)] ?? []
+    const hand: UnoCard[] = state?.hands?.[myPlayerId] ?? state?.hands?.[String(myPlayerId)] ?? []
     const newCard = hand.find(c => !snap.has(c.id))
     if (!newCard) return
     pendingDrawSnapRef.current = null
     setDrawFlying(prev => prev !== null ? { drawnCard: newCard } : null)
-  }, [state, drawFlying, uid])
+  }, [state, drawFlying, myPlayerId])
 
   // ── SFX: state-diff effect — fires sounds based on game state transitions ──
   useEffect(() => {
     if (!state) {
-      prevStateRef.current = null
+      // prevStateRef.current = null // This ref is now in the hook
       return
     }
 
-    const prev = prevStateRef.current
-    prevStateRef.current = state
+    // const prev = prevStateRef.current // This ref is now in the hook
+    // prevStateRef.current = state // This ref is now in the hook
 
     // Skip sounds for the very first state load (no diff to compare)
-    if (!prev) return
+    // if (!prev) return // This logic is now in the hook
 
     // ── Phase: lobby → playing (game starts) ───────────────────────────
-    if (prev.phase !== 'playing' && state.phase === 'playing') {
-      sfx.play('game_start', { cooldownMs: 3000 })
-      // Stagger deal sounds to mimic cards being distributed
-      setTimeout(() => sfx.play('deal', { cooldownMs: 0 }), 250)
-      setTimeout(() => sfx.play('deal', { cooldownMs: 0 }), 500)
-      return
-    }
+    // This logic is now in the hook
+    // if (prev.phase !== 'playing' && state.phase === 'playing') {
+    //   sfx.play('game_start', { cooldownMs: 3000 })
+    //   // Stagger deal sounds to mimic cards being distributed
+    //   setTimeout(() => sfx.play('deal', { cooldownMs: 0 }), 250)
+    //   setTimeout(() => sfx.play('deal', { cooldownMs: 0 }), 500)
+    //   return
+    // }
 
     // ── Phase: playing → finished (game over) ──────────────────────────
-    if (prev.phase === 'playing' && state.phase === 'finished') {
-      if (state.winnerId === uid) {
-        sfx.play('win', { cooldownMs: 3000 })
-      } else {
-        sfx.play('game_end', { cooldownMs: 3000 })
-      }
-      return
-    }
+    // This logic is now in the hook
+    // if (prev.phase === 'playing' && state.phase === 'finished') {
+    //   if (state.winnerId === uid) {
+    //     sfx.play('win', { cooldownMs: 3000 })
+    //   } else {
+    //     sfx.play('game_end', { cooldownMs: 3000 })
+    //   }
+    //   return
+    // }
 
-    if (state.phase !== 'playing') return
+    // if (state.phase !== 'playing') return // This logic is now in the hook
 
     // ── Turn change: now my turn ───────────────────────────────────────
-    const prevTurnId = prev.players[prev.currentPlayerIndex]?.playerId
-    const currTurnId = state.players[state.currentPlayerIndex]?.playerId
-    if (prevTurnId !== currTurnId && currTurnId === uid) {
-      sfx.play('card_select', { cooldownMs: 500 })
-    }
+    // This logic is now in the hook
+    // const prevTurnId = prev.players[prev.currentPlayerIndex]?.playerId
+    // const currTurnId = state.players[state.currentPlayerIndex]?.playerId
+    // if (prevTurnId !== currTurnId && currTurnId === uid) {
+    //   sfx.play('card_select', { cooldownMs: 500 })
+    // }
 
     // ── Top card changed → a card was played ──────────────────────────
-    const prevTop = prev.discardPile?.[prev.discardPile.length - 1]
-    const currTop = state.discardPile?.[state.discardPile.length - 1]
+    // This logic is now in the hook
+    // const prevTop = prev.discardPile?.[prev.discardPile.length - 1]
+    // const currTop = state.discardPile?.[state.discardPile.length - 1]
 
-    if (currTop && prevTop?.id !== currTop.id) {
-      // prevTurnId is who just played; only play sounds here for OTHER players.
-      // When the local player plays, sounds are triggered in onCardClick directly.
-      if (prevTurnId && prevTurnId !== uid) {
-        switch (currTop.face.kind) {
-          case 'reverse':
-            sfx.play('card_reverse', { cooldownMs: 300 })
-            break
-          case 'skip':
-            sfx.play('card_skip', { cooldownMs: 300 })
-            break
-          case 'draw2':
-          case 'wild4':
-            sfx.play('card_punish', { cooldownMs: 300 })
-            break
-          case 'wild':
-            sfx.play('wild_card', { cooldownMs: 300 })
-            break
-          default:
-            sfx.play('card_play_other', { cooldownMs: 200 })
-        }
-      }
-    }
+    // if (currTop && prevTop?.id !== currTop.id) {
+    //   // prevTurnId is who just played; only play sounds here for OTHER players.
+    //   // When the local player plays, sounds are triggered in onCardClick directly.
+    //   if (prevTurnId && prevTurnId !== uid) {
+    //     switch (currTop.face.kind) {
+    //       case 'reverse':
+    //         sfx.play('card_reverse', { cooldownMs: 300 })
+    //         break
+    //       case 'skip':
+    //         sfx.play('card_skip', { cooldownMs: 300 })
+    //         break
+    //       case 'draw2':
+    //       case 'wild4':
+    //         sfx.play('card_punish', { cooldownMs: 300 })
+    //         break
+    //       case 'wild':
+    //         sfx.play('wild_card', { cooldownMs: 300 })
+    //         break
+    //       default:
+    //         sfx.play('card_play_other', { cooldownMs: 200 })
+    //     }
+    //   }
+    // }
 
     // ── UNO prompt appeared ────────────────────────────────────────────
     // (no dedicated "uno call" sound file, so we reuse card_select as an attention ping)
-    if (!prev.unoPrompt?.active && state.unoPrompt?.active) {
-      sfx.play('card_select', { cooldownMs: 1000 })
-    }
-  }, [state, uid])
-
-  useEffect(() => {
-    if (!isLoggedIn || !user) return
-    if (!lobbyCode) {
-      setError('No lobby code provided')
-      return
-    }
-
-    let stopped = false
-    // Prevents the connect-event listener from firing join() during the
-    // initial connectAndJoin flow — only reconnects should use it.
-    let initialJoinDone = false
-    // In-flight guard: prevents concurrent join requests (e.g. rapid reconnects)
-    let joinInFlight = false
-
-    const join = async () => {
-      if (joinInFlight) {
-        if (IS_DEV) console.log('[uno:join] skipped — already in-flight')
-        return
-      }
-      joinInFlight = true
-      try {
-        const result = await unoSocket.joinLobby(lobbyCode)
-        if (stopped) return
-        if (result.success && result.gameState) {
-          const v = result.gameState.version ?? 0
-          lastVersionRef.current = Math.max(lastVersionRef.current, v)
-          latestStateRef.current = null
-          setState(result.gameState)
-          setUnoPrompt(result.gameState.unoPrompt)
-          logTTFC()
-          setError(null)
-        } else {
-          setError(result.error || 'Failed to join lobby')
-        }
-      } catch (err: any) {
-        if (!stopped) {
-          console.warn('[uno:join] error:', err?.message || err)
-          setError('Failed to join lobby — retrying…')
-          setTimeout(() => { if (!stopped) setError(null) }, 4000)
-        }
-      } finally {
-        joinInFlight = false
-      }
-    }
-
-    const connectAndJoin = async () => {
-      try {
-        await unoSocket.connect()
-        if (stopped) return
-        setConnected(true)
-        // Mark initial join done BEFORE calling join so subsequent
-        // connect events (reconnects) also trigger rejoin.
-        initialJoinDone = true
-        await join()
-      } catch (err) {
-        if (!stopped) setError('Failed to connect to server')
-        console.error(err)
-      }
-    }
-
-    connectAndJoin()
-
-    const unsubscribeState = unoSocket.on('gameState', (data) => {
-      const next = data as UnoClientState
-      if (!next || next.gameType !== 'uno') return
-      applyState(next)
-    })
-
-    const unsubscribeRoster = unoSocket.on('uno:roster', (payload) => {
-      const p = payload as any
-      setState(prev => {
-        if (!prev) return prev
-        if (prev.phase !== 'lobby') return prev
-        const v = Number(p?.version ?? prev.version)
-        const players = Array.isArray(p?.players) ? p.players : prev.players
-        return { ...prev, players, version: Math.max(prev.version ?? 0, v) }
-      })
-    })
-
-    const unsubscribeCelebration = unoSocket.on('game:celebration', (payload) => {
-      const p = payload as any
-      const id = String(p?.id || '')
-      const effectId = (p?.effectId || 'stars') as 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'water_burst' | 'sakura_petals' | 'gold_stars' | 'rainbow_burst'
-      if (!id) return
-      if (IS_DEV) console.log(`[uno:celebration] id=${id} effect=${effectId}`)
-      setCelebration({ id, effectId })
-      if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
-      celebrationTimerRef.current = window.setTimeout(() => setCelebration(null), 4000)
-    })
-
-    const unsubscribeEnd = unoSocket.on('lobbyEnded', () => {
-      setError('Lobby has been closed by the host')
-    })
-
-    // Reconnect handler: only fires for RECONNECTS (not the initial connect).
-    // The initialJoinDone flag prevents a double-join on first mount,
-    // where connectAndJoin already handles the initial join.
-    const unsubscribeConnect = unoSocket.on('connect', () => {
-      if (!stopped && lobbyCode && initialJoinDone) {
-        if (IS_DEV) console.log('[uno:reconnect] socket reconnected, rejoining…')
-        join().catch(err => {
-          if (!stopped) console.warn('[uno:reconnect] join failed:', err?.message || err)
-        })
-      }
-    })
-
-    // Opponent draw animation: another player drew a card (no card face)
-    const unsubscribeDrawFx = unoSocket.on('uno:drawFx', (payload) => {
-      const p = payload as { playerId?: string | number }
-      if (!p?.playerId) return
-      // Only show flash for OTHER players; drawer already has FlyingDrawCard
-      if (String(p.playerId) === String(userIdRef.current)) return
-      setOppDrawFlash({ id: `drawfx_${p.playerId}_${Date.now()}` })
-    })
-
-    // Immediate UNO Prompt pop-up (bypasses heavy state queue)
-    const unsubscribeUnoPrompt = unoSocket.on('uno:prompt', (payload) => {
-      setUnoPrompt(payload as UnoClientState['unoPrompt'])
-    })
-
-    // ── Page-visibility restore (mobile: tab returns from background) ──
-    const lastHiddenTimeRef = { current: 0 }
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        lastHiddenTimeRef.current = Date.now()
-        return
-      }
-
-      if (document.visibilityState !== 'visible' || stopped || !lobbyCode) return
-
-      // Guard: Only request state if backgrounded for more than 5 seconds.
-      // Brief backgrounding (swiping down notification shade) shouldn't spam resync.
-      const timeHidden = Date.now() - lastHiddenTimeRef.current
-      if (unoSocket.isConnected() && timeHidden > 5000) {
-        if (IS_DEV) console.log(`[uno:visibility] tab visible after ${timeHidden}ms, requesting state resync`)
-        unoSocket.requestState(lobbyCode).then(res => {
-          if (!stopped && res.success && res.gameState) {
-            applyState(res.gameState)
-          }
-        }).catch(() => { /* ignore — socket will reconnect on its own */ })
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    return () => {
-      stopped = true
-      unsubscribeState()
-      unsubscribeRoster()
-      unsubscribeCelebration()
-      unsubscribeEnd()
-      unsubscribeConnect()
-      unsubscribeDrawFx()
-      unsubscribeUnoPrompt()
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
-      unoSocket.disconnect()
-    }
-  }, [lobbyCode, isLoggedIn, user?.id, applyState])
+    // This logic is now in the hook
+    // if (!prev.unoPrompt?.active && state.unoPrompt?.active) {
+    //   sfx.play('card_select', { cooldownMs: 1000 })
+    // }
+  }, [state, uid, sfx]) // sfx added to deps
 
   const sendAction = useCallback(async (
     action: { type: 'play'; cardId: string; chosenColor?: UnoColor } | { type: 'draw' } | { type: 'pass' },
@@ -1128,44 +1030,31 @@ function Uno() {
     setColorModalOpen(false)
   }
 
-  // Auth loading
-  if (authLoading) {
-    return (
-      <div className="uno-page uno-page--standalone">
-        <div className="poker-loading">
-          <div className="spinner" />
-          <p>Loading...</p>
-        </div>
-      </div>
-    )
-  }
+  // Extract variables based on logic since they were used natively before
+  const myPlayerId = userId ?? ''
+  const isHost = state?.hostId === myPlayerId
+  const isPublic = !!state?.isPublic
+  const me = state?.players.find(p => p.playerId === myPlayerId) || null
+  const isSpectator = !!state?.isSpectator
+  const isMyTurn = state?.phase === 'playing' && state?.players[state.currentPlayerIndex]?.playerId === myPlayerId
+  const currentPlayer = state?.players[state.currentPlayerIndex]
+  const spectatorCount = state?.spectators?.length ?? 0
 
-  // Auth gate
-  if (!isLoggedIn) {
-    return (
-      <div className="uno-page uno-page--standalone">
-        <div className="poker-auth-gate">
-          <h2>Login Required</h2>
-          <p>You must be logged in to join UNO lobbies.</p>
-          <a href="/profile" className="btn-primary" style={{ textDecoration: 'none' }}>
-            Go to Profile to Login
-          </a>
-        </div>
-      </div>
-    )
-  }
+  const myHand = myPlayerId ? state?.hands?.[myPlayerId] ?? state?.hands?.[String(myPlayerId)] ?? [] : []
+  const topCard = state?.discardPile?.length ? state.discardPile[state.discardPile.length - 1] : null
+  const drawnPlayable = state?.drawnPlayable?.playerId === myPlayerId ? state.drawnPlayable : null
+  const playable = useMemo(() => {
+    const p = new Set<string>()
+    if (isMyTurn && state?.phase === 'playing') {
+      myHand.forEach((c: UnoCard) => {
+        if (isPlayableCard(c.face, topCard ? topCard.face : null, state.currentColor)) p.add(c.id)
+      })
+    }
+    return p
+  }, [isMyTurn, state?.phase, state?.currentColor, myHand, topCard])
 
-  if (error && !state) {
-    return (
-      <div className="uno-page uno-page--standalone">
-        <div className="poker-error">
-          <h2>Error</h2>
-          <p>{error}</p>
-          <button className="btn-primary" onClick={() => window.close()}>Close</button>
-        </div>
-      </div>
-    )
-  }
+  const hasAnyPlayable = playable.size > 0
+  const drawnPlayable = state?.drawnCardMatches && hasColor(myHand, state.currentColor as UnoColor)
 
   if (!connected || !state) {
     return (
@@ -1178,9 +1067,6 @@ function Uno() {
     )
   }
 
-  const phaseLabel = state.phase === 'lobby' ? 'LOBBY' : state.phase === 'playing' ? 'PLAYING' : 'FINISHED'
-  const dirLabel = state.direction === 1 ? 'CW' : 'CCW'
-  const colorLabel = state.currentColor ? state.currentColor.toUpperCase() : '-'
   const winner = state.winnerId ? state.players.find(p => p.playerId === state.winnerId) : null
 
   return (
@@ -1281,10 +1167,18 @@ function Uno() {
             <div className="uno-table__seats">
               {state.players.map((p, idx) => {
                 const isTurn = state.phase === 'playing' && idx === state.currentPlayerIndex
-                const isMe = p.playerId === uid
+                const isMe = p.playerId === myPlayerId
                 const isWinner = state.phase === 'finished' && state.winnerId === p.playerId
                 const uno = state.phase === 'playing' && p.cardCount === 1 && state.mustCallUno !== p.playerId
-                const style = seatPos(idx, state.players.length)
+
+                const angle = (idx * (360 / Math.max(1, state.players.length))) - 90
+                const rad = angle * (Math.PI / 180)
+                const rx = 42
+                const ry = 32
+                const style = {
+                  left: `calc(50% + ${Math.cos(rad) * rx}%)`,
+                  top: `calc(50% + ${Math.sin(rad) * ry}%)`,
+                }
 
                 return <UnoPlayerSeat key={p.playerId} player={p} isTurn={isTurn} isMe={isMe} isWinner={isWinner} uno={uno} style={style} />
               })}
@@ -1567,7 +1461,7 @@ function Uno() {
   )
 }
 
-export default Uno
+// Remove Uno component export default since UnoRouter handles it now.
 
 // ── Isolated UI Components (Memoized to prevent ticking/layout re-renders) ──
 
