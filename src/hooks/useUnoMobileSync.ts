@@ -106,9 +106,10 @@ export function useUnoMobileSync(lobbyCode: string, isLoggedIn: boolean, userId:
 
         // Identical version short-circuit: stops React re-render queue spam
         if (incomingVersion === lastVersion && lastVersion > 0) {
-            if (incoming.unoPrompt?.active !== state?.unoPrompt?.active) {
-                setUnoPrompt(incoming.unoPrompt)
-            }
+            setUnoPrompt((prev: UnoClientState['unoPrompt'] | null) => {
+                if (prev?.active !== incoming.unoPrompt?.active) return incoming.unoPrompt;
+                return prev;
+            })
             return
         }
 
@@ -124,12 +125,51 @@ export function useUnoMobileSync(lobbyCode: string, isLoggedIn: boolean, userId:
                 const s = latestStateRef.current
                 if (s) {
                     latestStateRef.current = null
-                    setState(s)
-                    setUnoPrompt(s.unoPrompt)
+
+                    setState((prev: UnoClientState | null) => {
+                        if (prev) {
+                            const isStateChanged = () => {
+                                if (prev.phase !== s.phase) return true;
+                                if (prev.currentPlayerIndex !== s.currentPlayerIndex) return true;
+                                if (prev.currentColor !== s.currentColor) return true;
+                                if (prev.drawPileCount !== s.drawPileCount) return true;
+                                if (prev.direction !== s.direction) return true;
+                                if (prev.mustCallUno !== s.mustCallUno) return true;
+                                if (prev.winnerId !== s.winnerId) return true;
+                                if (prev.actionLog?.length !== s.actionLog?.length) return true;
+                                if (prev.discardPile?.length !== s.discardPile?.length) return true;
+                                if (prev.players.length !== s.players.length) return true;
+                                for (let i = 0; i < prev.players.length; i++) {
+                                    if (prev.players[i].cardCount !== s.players[i].cardCount ||
+                                        prev.players[i].isConnected !== s.players[i].isConnected) return true;
+                                }
+                                if (userId) {
+                                    const hA = prev.hands?.[userId] || [];
+                                    const hB = s.hands?.[userId] || [];
+                                    if (hA.length !== hB.length) return true;
+                                    for (let i = 0; i < hA.length; i++) {
+                                        if (hA[i].id !== hB[i].id) return true;
+                                    }
+                                }
+                                if (prev.drawnPlayable?.cardId !== s.drawnPlayable?.cardId) return true;
+                                if (prev.unoPrompt?.active !== s.unoPrompt?.active) return true;
+                                return false;
+                            }
+                            if (!isStateChanged()) {
+                                return prev;
+                            }
+                        }
+                        return s;
+                    })
+
+                    setUnoPrompt((prev: UnoClientState['unoPrompt'] | null) => {
+                        if (prev?.active !== s.unoPrompt?.active) return s.unoPrompt;
+                        return prev;
+                    })
                 }
             })
         }
-    }, [state])
+    }, [userId])
 
     useEffect(() => {
         if (!isLoggedIn || !userId) return
@@ -192,7 +232,7 @@ export function useUnoMobileSync(lobbyCode: string, isLoggedIn: boolean, userId:
 
         const unsubscribeRoster = unoSocket.on('uno:roster', (payload) => {
             const p = payload as any
-            setState(prev => {
+            setState((prev: UnoClientState | null) => {
                 if (!prev) return prev
                 if (prev.phase !== 'lobby') return prev
                 const v = Number(p?.version ?? prev.version)
