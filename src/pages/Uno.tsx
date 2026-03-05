@@ -6,7 +6,7 @@ import { useIsMobile } from '../hooks/useIsMobile'
 import Modal from '../components/Modal'
 import WinCelebration from '../components/WinCelebration'
 import SfxControls from '../components/SfxControls'
-
+import tableLogo from '../assets/logo-white.svg'
 import { unoSocket } from '../services/socket'
 import { sfx } from '../services/sfx'
 import { UnoMobileHand } from '../components/UnoMobileHand'
@@ -1333,4 +1333,5 @@ const UnoActionLog = memo(function UnoActionLog({ actionLog }: { actionLog: { id
     </div>
   )
 })
+
 
