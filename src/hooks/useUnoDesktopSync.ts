@@ -1,20 +1,18 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { unoSocket } from '../services/socket'
 import { sfx } from '../services/sfx'
-import type { UnoClientState, UnoColor } from '../types/uno'
+import type { UnoClientState } from '../types/uno'
 
-export function useUnoDesktopSync(lobbyCode: string, isLoggedIn: boolean, userId: string | undefined) {
+export function useUnoSync(lobbyCode: string, isLoggedIn: boolean, userId: string | undefined) {
     const [state, setState] = useState<UnoClientState | null>(null)
     const [error, setError] = useState<string | null>(null)
-    const [connected, setConnected] = useState(false)
+    const [connected, setConnected] = useState(unoSocket.connected)
 
     const [unoPrompt, setUnoPrompt] = useState<UnoClientState['unoPrompt'] | null>(null)
     const [celebration, setCelebration] = useState<null | { id: string; effectId: string }>(null)
     const [oppDrawFlash, setOppDrawFlash] = useState<{ id: string } | null>(null)
 
     const celebrationTimerRef = useRef<number | null>(null)
-    const lastVersionRef = useRef<number>(0)
-    const resyncingRef = useRef(false)
     const prevStateRef = useRef<UnoClientState | null>(null)
 
     // SFX: state-diff effect — fires sounds based on game state transitions
@@ -83,42 +81,6 @@ export function useUnoDesktopSync(lobbyCode: string, isLoggedIn: boolean, userId
         }
     }, [state, userId])
 
-    const applyState = useCallback((incoming: UnoClientState) => {
-        const incomingVersion = incoming.version ?? 0
-        const lastVersion = lastVersionRef.current
-
-        // Detect version gap → resync
-        if (incomingVersion > lastVersion + 1 && lastVersion > 0 && !resyncingRef.current) {
-            resyncingRef.current = true
-            unoSocket.requestFullState(incoming.lobbyCode).then(res => {
-                resyncingRef.current = false
-                if (res.success && res.gameState) {
-                    lastVersionRef.current = res.gameState.version ?? 0
-                    setState(res.gameState)
-                    setUnoPrompt(res.gameState.unoPrompt)
-                }
-            }).catch(() => { resyncingRef.current = false })
-        }
-
-        // Identical version short-circuit
-        if (incomingVersion === lastVersion && lastVersion > 0) {
-            if (incoming.unoPrompt?.active !== state?.unoPrompt?.active) {
-                setUnoPrompt(incoming.unoPrompt)
-            }
-            return
-        }
-
-        lastVersionRef.current = incomingVersion
-
-        // DESKTOP: Immediate setState application without RAF queue or coalescing delay
-        setState(incoming)
-        // Synchronize UI-level modal just in case the backend payload explicitly set it
-        if (incoming.unoPrompt?.active !== state?.unoPrompt?.active) {
-            setUnoPrompt(incoming.unoPrompt)
-        }
-
-    }, [state])
-
     useEffect(() => {
         if (!isLoggedIn || !userId) return
         if (!lobbyCode) {
@@ -126,19 +88,15 @@ export function useUnoDesktopSync(lobbyCode: string, isLoggedIn: boolean, userId
             return
         }
 
-        let stopped = false
-        let initialJoinDone = false
-        let joinInFlight = false
+        const handleConnect = () => setConnected(true)
+        const handleDisconnect = () => setConnected(false)
 
+        let stopped = false
         const join = async () => {
-            if (joinInFlight) return
-            joinInFlight = true
             try {
                 const result = await unoSocket.joinLobby(lobbyCode)
                 if (stopped) return
                 if (result.success && result.gameState) {
-                    const v = result.gameState.version ?? 0
-                    lastVersionRef.current = Math.max(lastVersionRef.current, v)
                     setState(result.gameState)
                     setUnoPrompt(result.gameState.unoPrompt)
                     setError(null)
@@ -151,17 +109,16 @@ export function useUnoDesktopSync(lobbyCode: string, isLoggedIn: boolean, userId
                     setError('Failed to join lobby — retrying…')
                     setTimeout(() => { if (!stopped) setError(null) }, 4000)
                 }
-            } finally {
-                joinInFlight = false
             }
         }
 
         const connectAndJoin = async () => {
             try {
-                await unoSocket.connect()
+                if (!unoSocket.connected) {
+                    await unoSocket.connect()
+                }
                 if (stopped) return
                 setConnected(true)
-                initialJoinDone = true
                 await join()
             } catch (err) {
                 if (!stopped) setError('Failed to connect to server')
@@ -174,7 +131,13 @@ export function useUnoDesktopSync(lobbyCode: string, isLoggedIn: boolean, userId
         const unsubscribeState = unoSocket.on('gameState', (data) => {
             const next = data as UnoClientState
             if (!next || next.gameType !== 'uno') return
-            applyState(next)
+
+            // Dumb state hydration: no RAF coalescing, no versions.
+            setState(next)
+
+            if (next.unoPrompt?.active !== undefined) {
+                setUnoPrompt(next.unoPrompt)
+            }
         })
 
         const unsubscribeRoster = unoSocket.on('uno:roster', (payload) => {
@@ -182,9 +145,8 @@ export function useUnoDesktopSync(lobbyCode: string, isLoggedIn: boolean, userId
             setState(prev => {
                 if (!prev) return prev
                 if (prev.phase !== 'lobby') return prev
-                const v = Number(p?.version ?? prev.version)
                 const players = Array.isArray(p?.players) ? p.players : prev.players
-                return { ...prev, players, version: Math.max(prev.version ?? 0, v) }
+                return { ...prev, players }
             })
         })
 
@@ -203,12 +165,15 @@ export function useUnoDesktopSync(lobbyCode: string, isLoggedIn: boolean, userId
         })
 
         const unsubscribeConnect = unoSocket.on('connect', () => {
-            if (!stopped && lobbyCode && initialJoinDone) {
+            handleConnect()
+            if (!stopped && lobbyCode) {
                 join().catch(err => {
                     if (!stopped) console.warn('[uno:reconnect] join failed:', err?.message || err)
                 })
             }
         })
+
+        const unsubscribeDisconnectOrig = unoSocket.on('disconnect', handleDisconnect)
 
         const unsubscribeDrawFx = unoSocket.on('uno:drawFx', (payload) => {
             const p = payload as { playerId?: string | number }
@@ -217,7 +182,6 @@ export function useUnoDesktopSync(lobbyCode: string, isLoggedIn: boolean, userId
             setOppDrawFlash({ id: `drawfx_${p.playerId}_${Date.now()}` })
         })
 
-        // Immediate UNO Prompt pop-up
         const unsubscribeUnoPrompt = unoSocket.on('uno:prompt', (payload) => {
             setUnoPrompt(payload as UnoClientState['unoPrompt'])
         })
@@ -229,12 +193,13 @@ export function useUnoDesktopSync(lobbyCode: string, isLoggedIn: boolean, userId
             unsubscribeCelebration()
             unsubscribeEnd()
             unsubscribeConnect()
+            unsubscribeDisconnectOrig()
             unsubscribeDrawFx()
             unsubscribeUnoPrompt()
             if (celebrationTimerRef.current) window.clearTimeout(celebrationTimerRef.current)
-            unoSocket.disconnect()
+            // STRICT RULE: No unoSocket.disconnect() here
         }
-    }, [lobbyCode, isLoggedIn, userId, applyState])
+    }, [lobbyCode, isLoggedIn, userId])
 
     return { state, setState, connected, error, setError, unoPrompt, setUnoPrompt, oppDrawFlash, setOppDrawFlash, celebration }
 }
