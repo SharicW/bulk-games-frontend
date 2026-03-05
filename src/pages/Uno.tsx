@@ -556,9 +556,6 @@ function UnoUI({ lobbyCode, isLoggedIn, userId, sync, isMobile }: {
   const [colorModalOpen, setColorModalOpen] = useState(false)
   const [pendingWildCardId, setPendingWildCardId] = useState<string | null>(null)
 
-  // ── Celebration (server-driven; visible to everyone) ───────────
-  const [celebration, setCelebration] = useState<null | { id: string; effectId: 'stars' | 'red_hearts' | 'black_hearts' | 'fire_burst' | 'water_burst' | 'sakura_petals' | 'gold_stars' | 'rainbow_burst' }>(null)
-  const celebrationTimerRef = useRef<number | null>(null)
 
   // ── Flying card animation state ─────────────────────────────────
   const [flyingCard, setFlyingCard] = useState<{ card: UnoCard; fromRect: DOMRect } | null>(null)
@@ -594,21 +591,28 @@ function UnoUI({ lobbyCode, isLoggedIn, userId, sync, isMobile }: {
   const deckRef = useRef<HTMLDivElement>(null)
   const handRef = useRef<HTMLDivElement>(null)
 
+  // Extract variables based on logic since they were used natively before
+  const myPlayerId = userId ?? ''
+  const isHost = state?.hostId === myPlayerId
+  const isPublic = !!state?.isPublic
+  const me = state?.players.find(p => p.playerId === myPlayerId) || null
+  const isSpectator = !!state?.isSpectator
+  const isMyTurn = state?.phase === 'playing' && state?.players[state.currentPlayerIndex]?.playerId === myPlayerId
+  const currentPlayer = state?.players[state.currentPlayerIndex]
+  const spectatorCount = state?.spectators?.length ?? 0
 
+  const myHand = myPlayerId ? state?.hands?.[myPlayerId] ?? state?.hands?.[String(myPlayerId)] ?? [] : []
+  const topCard = state?.discardPile?.length ? state.discardPile[state.discardPile.length - 1] : null
+  const drawnPlayable = state?.drawnPlayable?.playerId === myPlayerId ? state.drawnPlayable : null
   const playable = useMemo(() => {
-    if (!state) return new Set<string>()
-    const set = new Set<string>()
-    const top = topCard?.face || null
-    for (const c of myHand) {
-      const ok = isPlayableCard(c.face, top, state.currentColor)
-      if (!ok) continue
-      if (c.face.kind === 'wild4' && state.currentColor && hasColor(myHand, state.currentColor)) continue
-      if (drawnPlayable && c.id !== drawnPlayable.cardId) continue
-      set.add(c.id)
+    const p = new Set<string>()
+    if (isMyTurn && state?.phase === 'playing') {
+      myHand.forEach((c: UnoCard) => {
+        if (isPlayableCard(c.face, topCard ? topCard.face : null, state.currentColor)) p.add(c.id)
+      })
     }
-    return set
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.currentColor, myHand, topCard?.id, drawnPlayable?.cardId])
+    return p
+  }, [isMyTurn, state?.phase, state?.currentColor, myHand, topCard])
 
   const hasAnyPlayable = playable.size > 0
 
@@ -755,7 +759,7 @@ function UnoUI({ lobbyCode, isLoggedIn, userId, sync, isMobile }: {
     // if (!prev.unoPrompt?.active && state.unoPrompt?.active) {
     //   sfx.play('card_select', { cooldownMs: 1000 })
     // }
-  }, [state, uid, sfx]) // sfx added to deps
+  }, [state, myPlayerId, sfx]) // sfx added to deps
 
   const sendAction = useCallback(async (
     action: { type: 'play'; cardId: string; chosenColor?: UnoColor } | { type: 'draw' } | { type: 'pass' },
@@ -887,30 +891,11 @@ function UnoUI({ lobbyCode, isLoggedIn, userId, sync, isMobile }: {
     setColorModalOpen(false)
   }
 
-  // Extract variables based on logic since they were used natively before
-  const myPlayerId = userId ?? ''
-  const isHost = state?.hostId === myPlayerId
-  const isPublic = !!state?.isPublic
-  const me = state?.players.find(p => p.playerId === myPlayerId) || null
-  const isSpectator = !!state?.isSpectator
-  const isMyTurn = state?.phase === 'playing' && state?.players[state.currentPlayerIndex]?.playerId === myPlayerId
-  const currentPlayer = state?.players[state.currentPlayerIndex]
-  const spectatorCount = state?.spectators?.length ?? 0
 
-  const myHand = myPlayerId ? state?.hands?.[myPlayerId] ?? state?.hands?.[String(myPlayerId)] ?? [] : []
-  const topCard = state?.discardPile?.length ? state.discardPile[state.discardPile.length - 1] : null
-  const drawnPlayable = state?.drawnPlayable?.playerId === myPlayerId ? state.drawnPlayable : null
-  const playable = useMemo(() => {
-    const p = new Set<string>()
-    if (isMyTurn && state?.phase === 'playing') {
-      myHand.forEach((c: UnoCard) => {
-        if (isPlayableCard(c.face, topCard ? topCard.face : null, state.currentColor)) p.add(c.id)
-      })
-    }
-    return p
-  }, [isMyTurn, state?.phase, state?.currentColor, myHand, topCard])
 
-  const hasAnyPlayable = playable.size > 0
+  const phaseLabel = state.phase === 'lobby' ? 'Waiting in Lobby' : state.phase === 'playing' ? 'In Progress' : 'Game Over'
+  const colorLabel = state.currentColor ? state.currentColor.charAt(0).toUpperCase() + state.currentColor.slice(1) : 'None'
+  const dirLabel = state.direction === 1 ? 'Clockwise' : 'Counter-Clockwise'
 
   if (!connected || !state) {
     return (
@@ -1226,7 +1211,7 @@ function UnoUI({ lobbyCode, isLoggedIn, userId, sync, isMobile }: {
       >
         {unoPrompt && (() => {
           const target = state.players.find((p: any) => p.playerId === unoPrompt!.targetPlayerId);
-          const iAmTarget = unoPrompt!.targetPlayerId === uid;
+          const iAmTarget = unoPrompt!.targetPlayerId === myPlayerId;
           return (
             <div className="uno-prompt">
               <p className="uno-prompt__info">
