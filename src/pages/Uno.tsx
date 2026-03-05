@@ -487,42 +487,11 @@ const FlyingCard = memo(function FlyingCard({ card, images, fromRect, discardRef
 })
 
 export default function UnoRouter() {
-  const { isLoggedIn, user } = useAuth()
-  const [lobbyCode, setLobbyCode] = useState<string>('')
   const [params] = useSearchParams()
-
-  useEffect(() => {
-    const code = params.get('code')
-    if (code) setLobbyCode(code)
-  }, [params])
-
+  const lobbyCode = (params.get('lobby') || params.get('code') || '').toUpperCase()
+  const { isLoggedIn, user, loading: authLoading } = useAuth()
   const mobileThreshold = 768
   const isMobileSize = useIsMobile(mobileThreshold)
-
-  // Strict separation of environment logic paths
-  if (isMobileSize) {
-    return <UnoMobilePage lobbyCode={lobbyCode} isLoggedIn={isLoggedIn} userId={user?.id} />
-  }
-  return <UnoDesktopPage lobbyCode={lobbyCode} isLoggedIn={isLoggedIn} userId={user?.id} />
-}
-// Suppress unused-var lint for clamp (used by other utilities)
-void clamp
-
-function UnoDesktopPage({ lobbyCode, isLoggedIn, userId }: any) {
-  const sync = useUnoDesktopSync(lobbyCode, isLoggedIn, userId)
-  return <UnoUI lobbyCode={lobbyCode} isLoggedIn={isLoggedIn} userId={userId} sync={sync} isMobile={false} />
-}
-
-function UnoMobilePage({ lobbyCode, isLoggedIn, userId }: any) {
-  const sync = useUnoMobileSync(lobbyCode, isLoggedIn, userId)
-  return <UnoUI lobbyCode={lobbyCode} isLoggedIn={isLoggedIn} userId={userId} sync={sync} isMobile={true} />
-}
-
-export default function UnoRouter() {
-  const [searchParams] = useSearchParams()
-  const lobbyCode = (searchParams.get('lobby') || '').toUpperCase()
-  const { isLoggedIn, user, loading: authLoading } = useAuth()
-  const isMobile = useIsMobile()
 
   // Auth loading
   if (authLoading) {
@@ -551,11 +520,23 @@ export default function UnoRouter() {
     )
   }
 
-  if (isMobile) {
+  // Strict separation of environment logic paths
+  if (isMobileSize) {
     return <UnoMobilePage lobbyCode={lobbyCode} isLoggedIn={isLoggedIn} userId={user?.id} />
   }
-
   return <UnoDesktopPage lobbyCode={lobbyCode} isLoggedIn={isLoggedIn} userId={user?.id} />
+}
+// Suppress unused-var lint for clamp (used by other utilities)
+void clamp
+
+function UnoDesktopPage({ lobbyCode, isLoggedIn, userId }: any) {
+  const sync = useUnoDesktopSync(lobbyCode, isLoggedIn, userId)
+  return <UnoUI lobbyCode={lobbyCode} isLoggedIn={isLoggedIn} userId={userId} sync={sync} isMobile={false} />
+}
+
+function UnoMobilePage({ lobbyCode, isLoggedIn, userId }: any) {
+  const sync = useUnoMobileSync(lobbyCode, isLoggedIn, userId)
+  return <UnoUI lobbyCode={lobbyCode} isLoggedIn={isLoggedIn} userId={userId} sync={sync} isMobile={true} />
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -595,18 +576,6 @@ function UnoUI({ lobbyCode, isLoggedIn, userId, sync, isMobile }: {
   const actionPendingRef = useRef(false)
   const [actionPending, setActionPending] = useState(false)
 
-  // ── SFX: previous state ref for diff-based sound triggers ─────
-  const prevStateRef = useRef<UnoClientState | null>(null)
-
-  // ── RAF coalesced state updates ────────────────────────────────
-  // Stores the latest incoming state; a single RAF per frame applies it.
-  // This prevents React render-backlog when the server emits states rapidly.
-  const latestStateRef = useRef<UnoClientState | null>(null)
-  const rafScheduledRef = useRef(false)
-
-  // ── DEV: measure time from state-receive to RAF (render) ───────
-  const devReceiveTimeRef = useRef<number>(0)
-
   // ── Pending play card (optimistic visual removal from hand) ────
   // Set on card click; card is filtered from visibleHand immediately.
   // Cleared when server confirms (card gone from hand) or on ACK failure.
@@ -615,9 +584,6 @@ function UnoUI({ lobbyCode, isLoggedIn, userId, sync, isMobile }: {
   // Saved rect for wild card flying animation (captured before modal opens)
   const pendingWildFromRectRef = useRef<DOMRect | null>(null)
 
-  // ── Decoupled UNO Prompt Overlay ───────────────────────────────
-  // Moved to sync hook
-
   // ── Draw animation ─────────────────────────────────────────────
   // drawnCard is null while in-flight (card back shown), set to the real
   // card once the state update / ACK reveals it.
@@ -625,118 +591,9 @@ function UnoUI({ lobbyCode, isLoggedIn, userId, sync, isMobile }: {
   // Snapshot of hand IDs captured before the draw action is sent.
   // Used to diff state updates and find the newly drawn card.
   const pendingDrawSnapRef = useRef<Set<string> | null>(null)
-  // Opponent draw flash: shown when another player draws (uno:drawFx event)
-  // Moved to Sync Hook
   const deckRef = useRef<HTMLDivElement>(null)
   const handRef = useRef<HTMLDivElement>(null)
 
-  /**
-   * Apply a new UNO game state only if its version is newer than what we have.
-   * If a version gap is detected, request a full resync.
-   */
-  const applyState = useCallback((incoming: UnoClientState) => {
-    const incomingVersion = incoming.version ?? 0
-    const lastVersion = lastVersionRef.current
-
-    // Ignore strictly-older states.
-    // Use strict less-than (<) so same-version re-broadcasts (e.g. from the
-    // server bumping then immediately re-broadcasting after a reconnect) are
-    // still applied.  This prevents the "players don't appear" bug where a
-    // transient version revert on the server caused all subsequent same-version
-    // broadcasts to be silently dropped by every connected client.
-    if (incomingVersion > 0 && lastVersion > 0 && incomingVersion < lastVersion) {
-      if (IS_DEV) console.log(`[uno:sync] Ignored stale state v${incomingVersion} < v${lastVersion}`)
-      return
-    }
-
-    // Detect version gap → request full resync
-    if (incomingVersion > lastVersion + 1 && lastVersion > 0 && !resyncingRef.current) {
-      if (IS_DEV) console.warn(`[uno:sync] Version gap detected: v${lastVersion} → v${incomingVersion}, requesting resync`)
-      resyncingRef.current = true
-      unoSocket.requestFullState(incoming.lobbyCode).then(res => {
-        resyncingRef.current = false
-        if (res.success && res.gameState) {
-          lastVersionRef.current = res.gameState.version ?? 0
-          setState(res.gameState)
-          setUnoPrompt(res.gameState.unoPrompt)
-        }
-      }).catch(() => { resyncingRef.current = false })
-      // Still apply this state as a fallback
-    }
-
-    // Identical version short-circuit: stops React re-render queue spam
-    if (incomingVersion === lastVersion && lastVersion > 0) {
-      // Only apply independent, volatile visual state changes like prompt appearing 
-      // without re-rendering the massive hands and discard pile arrays.
-      if (incoming.unoPrompt?.active !== latestStateRef.current?.unoPrompt?.active) {
-        setUnoPrompt(incoming.unoPrompt)
-      }
-      return
-    }
-
-    lastVersionRef.current = incomingVersion
-    logTTFC()
-
-    // ── Coalesce: only commit the latest state per animation frame ──────
-    // If multiple states arrive in the same frame (e.g. rapid server emits),
-    // we only call setState once with the freshest payload, preventing a
-    // React render backlog that shows as "client delay" even when the
-    // server has already moved on.
-    latestStateRef.current = incoming
-    if (IS_DEV) devReceiveTimeRef.current = performance.now()
-
-    if (!rafScheduledRef.current) {
-      rafScheduledRef.current = true
-      requestAnimationFrame(() => {
-        rafScheduledRef.current = false
-        const s = latestStateRef.current
-        if (s) {
-          latestStateRef.current = null
-          if (IS_DEV && devReceiveTimeRef.current > 0) {
-            const delay = performance.now() - devReceiveTimeRef.current
-            if (delay > 200) console.warn(`[uno:perf] Render delay: ${delay.toFixed(0)}ms (state→RAF)`)
-          }
-          setState((prev: UnoClientState | null) => {
-            if (prev) {
-              const isStateChanged = () => {
-                if (prev.phase !== s.phase) return true;
-                if (prev.currentPlayerIndex !== s.currentPlayerIndex) return true;
-                if (prev.currentColor !== s.currentColor) return true;
-                if (prev.drawPileCount !== s.drawPileCount) return true;
-                if (prev.direction !== s.direction) return true;
-                if (prev.mustCallUno !== s.mustCallUno) return true;
-                if (prev.winnerId !== s.winnerId) return true;
-                if (prev.actionLog?.length !== s.actionLog?.length) return true;
-                if (prev.discardPile?.length !== s.discardPile?.length) return true;
-                if (prev.players.length !== s.players.length) return true;
-                for (let i = 0; i < prev.players.length; i++) {
-                  if (prev.players[i].cardCount !== s.players[i].cardCount ||
-                    prev.players[i].isConnected !== s.players[i].isConnected) return true;
-                }
-                const uid = userIdRef.current;
-                if (uid) {
-                  const hA = prev.hands?.[uid] || [];
-                  const hB = s.hands?.[uid] || [];
-                  if (hA.length !== hB.length) return true;
-                  for (let i = 0; i < hA.length; i++) {
-                    if (hA[i].id !== hB[i].id) return true;
-                  }
-                }
-                if (prev.drawnPlayable?.cardId !== s.drawnPlayable?.cardId) return true;
-                if (prev.unoPrompt?.active !== s.unoPrompt?.active) return true;
-                return false;
-              }
-              if (!isStateChanged()) {
-                if (IS_DEV) console.log('[uno:sync] Dropped timer/version-only update');
-                return prev;
-              }
-            }
-            return s;
-          })
-        }
-      })
-    }
-  }, [])
 
   const playable = useMemo(() => {
     if (!state) return new Set<string>()
@@ -1054,7 +911,6 @@ function UnoUI({ lobbyCode, isLoggedIn, userId, sync, isMobile }: {
   }, [isMyTurn, state?.phase, state?.currentColor, myHand, topCard])
 
   const hasAnyPlayable = playable.size > 0
-  const drawnPlayable = state?.drawnCardMatches && hasColor(myHand, state.currentColor as UnoColor)
 
   if (!connected || !state) {
     return (
