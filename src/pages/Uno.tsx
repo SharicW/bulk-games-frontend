@@ -12,7 +12,6 @@ import { sfx } from '../services/sfx'
 import { UnoMobileHand } from '../components/UnoMobileHand'
 import { UnoDesktopHand } from '../components/UnoDesktopHand'
 import type { UnoCard, UnoCardFace, UnoClientState, UnoColor } from '../types/uno'
-import { useUnoMobileSync } from '../hooks/useUnoMobileSync'
 import { useUnoDesktopSync } from '../hooks/useUnoDesktopSync'
 
 /** Build CSS classes for player cosmetics from game-state data */
@@ -45,9 +44,75 @@ function buildCosmeticClasses(border: string | null | undefined, effect: string 
   return classes.join(' ')
 }
 
-/* ── Preload UNO card images with priority + batch loading ──────────── */
-const _unoImageFiles = import.meta.glob('/assets/uno_cards/**/*.png', { eager: true, import: 'default' }) as Record<string, string>
-const _allUnoUrls = Object.values(_unoImageFiles)
+/* ── Preload UNO card images with EXACT paths to avoid glob crashes ──────────── */
+const UNO_CARD_MAP: Record<string, string[]> = {
+  // Red
+  red_0: ['/assets/uno_cards/Red/Red-0.png'],
+  red_1: ['/assets/uno_cards/Red/Red-1.png'],
+  red_2: ['/assets/uno_cards/Red/Red-2.png'],
+  red_3: ['/assets/uno_cards/Red/Red-3.png'],
+  red_4: ['/assets/uno_cards/Red/Red-4.png'],
+  red_5: ['/assets/uno_cards/Red/Red-5.png'],
+  red_6: ['/assets/uno_cards/Red/Red-6.png'],
+  red_7: ['/assets/uno_cards/Red/Red-7.png'],
+  red_8: ['/assets/uno_cards/Red/Red-8.png'],
+  red_9: ['/assets/uno_cards/Red/Red-9.png'],
+  red_draw2: ['/assets/uno_cards/Red/Red Draw2-1.png', '/assets/uno_cards/Red/Red Draw2-2.png'],
+  red_skip: ['/assets/uno_cards/Red/Red Skip-1.png', '/assets/uno_cards/Red/Red Skip-3.png', '/assets/uno_cards/Blue/Red Skip-2.png'],
+  red_reverse: ['/assets/uno_cards/Red/Red Reverse-1.png', '/assets/uno_cards/Red/Red Reverse2.png'],
+
+  // Green
+  green_0: ['/assets/uno_cards/Green/Green-0.png'],
+  green_1: ['/assets/uno_cards/Green/Green-1.png'],
+  green_2: ['/assets/uno_cards/Green/Green-2.png'],
+  green_3: ['/assets/uno_cards/Green/Green-3.png'],
+  green_4: ['/assets/uno_cards/Green/Green-4.png'],
+  green_5: ['/assets/uno_cards/Green/Green-5.png'],
+  green_6: ['/assets/uno_cards/Green/Green-6.png'],
+  green_7: ['/assets/uno_cards/Green/Green-7.png'],
+  green_8: ['/assets/uno_cards/Green/Green-8.png'],
+  green_9: ['/assets/uno_cards/Green/Green-9.png'],
+  green_draw2: ['/assets/uno_cards/Green/Green Draw2-1.png', '/assets/uno_cards/Green/Green Draw2-2.png', '/assets/uno_cards/Yellow/Green Draw2-8.png'],
+  green_skip: ['/assets/uno_cards/Green/Green Skip- 1.png', '/assets/uno_cards/Green/Green Skip- 2.png'],
+  green_reverse: ['/assets/uno_cards/Green/Green Reverse-1.png', '/assets/uno_cards/Green/Green Reverse-2.png'],
+
+  // Blue
+  blue_0: ['/assets/uno_cards/Blue/Blue-0.png'],
+  blue_1: ['/assets/uno_cards/Blue/Blue-1.png'],
+  blue_2: ['/assets/uno_cards/Blue/Blue-2.png'],
+  blue_3: ['/assets/uno_cards/Blue/Blue-3.png'],
+  blue_4: ['/assets/uno_cards/Blue/Blue-4.png'],
+  blue_5: ['/assets/uno_cards/Blue/Blue-5.png'],
+  blue_6: ['/assets/uno_cards/Blue/Blue-6.png'],
+  blue_7: ['/assets/uno_cards/Blue/Blue-7.png'],
+  blue_8: ['/assets/uno_cards/Blue/Blue-8.png'],
+  blue_9: ['/assets/uno_cards/Blue/Blue-9.png'],
+  blue_draw2: ['/assets/uno_cards/Blue/Blue Draw2-1.png', '/assets/uno_cards/Blue/Blue Draw2-2.png'],
+  blue_skip: ['/assets/uno_cards/Blue/Blue Skip-1.png'],
+  blue_reverse: ['/assets/uno_cards/Blue/Blue Reverse- 1.png', '/assets/uno_cards/Blue/Blue Reverse- 2.png'],
+
+  // Yellow
+  yellow_0: ['/assets/uno_cards/Yellow/Yellow-0.png'],
+  yellow_1: ['/assets/uno_cards/Yellow/Yellow-1.png'],
+  yellow_2: ['/assets/uno_cards/Yellow/Yellow-2.png'],
+  yellow_3: ['/assets/uno_cards/Yellow/Yellow-3.png'],
+  yellow_4: ['/assets/uno_cards/Yellow/Yellow-4.png'],
+  yellow_5: ['/assets/uno_cards/Yellow/Yellow-5.png'],
+  yellow_6: ['/assets/uno_cards/Yellow/Yellow-6.png'],
+  yellow_7: ['/assets/uno_cards/Yellow/Yellow-7.png'],
+  yellow_8: ['/assets/uno_cards/Yellow/Yellow-8.png'],
+  yellow_9: ['/assets/uno_cards/Yellow/Yellow-9.png'],
+  yellow_draw2: ['/assets/uno_cards/Yellow/Yellow Draw2-2.png'],
+  yellow_skip: ['/assets/uno_cards/Yellow/Yellow Skip-1.png', '/assets/uno_cards/Yellow/Yellow Skip-2.png'],
+  yellow_reverse: ['/assets/uno_cards/Yellow/Yellow Reverse-1.png', '/assets/uno_cards/Yellow/Yellow Reverse-2.png'],
+
+  // Wild
+  wild: ['/assets/uno_cards/Wild/Wild-1.png', '/assets/uno_cards/Wild/Wild-2.png', '/assets/uno_cards/Wild/Wild-3.png', '/assets/uno_cards/Wild/Wild-4.png'],
+  wild4: ['/assets/uno_cards/Draw/Draw4-1.png', '/assets/uno_cards/Draw/Draw4-2.png', '/assets/uno_cards/Draw/Draw4-3.png', '/assets/uno_cards/Draw/Draw4-4.png']
+}
+
+const _allUnoUrls: string[] = []
+Object.values(UNO_CARD_MAP).forEach(urls => _allUnoUrls.push(...urls))
 const _unoLoadedUrls = new Set<string>()
 let _unoPreloadStarted = false
 
@@ -98,38 +163,37 @@ function preloadUnoCards(): void {
   let idx = 0
   function next() {
     if (idx >= remaining.length) {
-      if (IS_DEV) console.log(`[uno:preload] TTAC all ${_allUnoUrls.length} cards: ${(performance.now() - t0).toFixed(0)}ms`)
+      if (IS_DEV) console.log(`[uno:preload] All ${_allUnoUrls.length} cards loaded in ${(performance.now() - t0).toFixed(0)}ms`)
       return
     }
-    const batch = remaining.slice(idx, idx + UNO_BATCH_SIZE)
+    const chunk = remaining.slice(idx, idx + UNO_BATCH_SIZE)
     idx += UNO_BATCH_SIZE
-    loadUnoBatch(batch).then(() => {
-      if (typeof requestIdleCallback === 'function') requestIdleCallback(() => next())
-      else setTimeout(next, 80)
-    })
+    if ('requestIdleCallback' in window) {
+      ; (window as any).requestIdleCallback(() => loadUnoBatch(chunk).then(next))
+    } else {
+      setTimeout(() => loadUnoBatch(chunk).then(next), 50)
+    }
   }
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(() => next())
-  else setTimeout(next, 100)
+  next()
 }
-preloadUnoCards()
 
+// ── Logical to Visual Mapping Helpers ──────────────────────────────────────────────
 export type UnoFaceId =
-  | `${UnoColor}_${0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`
-  | `${UnoColor}_skip`
-  | `${UnoColor}_reverse`
-  | `${UnoColor}_draw2`
-  | 'wild'
-  | 'wild4'
+  | 'red_0' | 'red_1' | 'red_2' | 'red_3' | 'red_4' | 'red_5' | 'red_6' | 'red_7' | 'red_8' | 'red_9' | 'red_draw2' | 'red_skip' | 'red_reverse'
+  | 'green_0' | 'green_1' | 'green_2' | 'green_3' | 'green_4' | 'green_5' | 'green_6' | 'green_7' | 'green_8' | 'green_9' | 'green_draw2' | 'green_skip' | 'green_reverse'
+  | 'blue_0' | 'blue_1' | 'blue_2' | 'blue_3' | 'blue_4' | 'blue_5' | 'blue_6' | 'blue_7' | 'blue_8' | 'blue_9' | 'blue_draw2' | 'blue_skip' | 'blue_reverse'
+  | 'yellow_0' | 'yellow_1' | 'yellow_2' | 'yellow_3' | 'yellow_4' | 'yellow_5' | 'yellow_6' | 'yellow_7' | 'yellow_8' | 'yellow_9' | 'yellow_draw2' | 'yellow_skip' | 'yellow_reverse'
+  | 'wild' | 'wild4'
 
 export function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n))
 }
 
-export function faceId(face: UnoCardFace): UnoFaceId {
-  if (face.kind === 'wild') return 'wild'
-  if (face.kind === 'wild4') return 'wild4'
-  if (face.kind === 'number') return `${face.color}_${face.value}` as UnoFaceId
-  return `${face.color}_${face.kind}` as UnoFaceId
+export function faceId(f: UnoCardFace): UnoFaceId {
+  if (f.kind === 'wild') return 'wild'
+  if (f.kind === 'wild4') return 'wild4'
+  if (f.kind === 'number') return `${f.color}_${f.value}` as UnoFaceId
+  return `${f.color}_${f.kind}` as UnoFaceId
 }
 
 export function isWild(face: UnoCardFace) {
@@ -173,109 +237,7 @@ export function hashStr(s: string) {
 }
 
 function buildUnoImages(): Record<string, string[]> {
-  const files = _unoImageFiles
-  const out: Record<string, string[]> = {}
-
-  const add = (id: UnoFaceId, filenamePattern: string) => {
-    // Find any file in the glob whose path ends with this exact string name (case-insensitive)
-    const matches = Object.entries(files).filter(([path]) =>
-      path.toLowerCase().endsWith(filenamePattern.toLowerCase())
-    )
-    if (matches.length > 0) {
-      if (!out[id]) out[id] = []
-      out[id].push(...matches.map(m => m[1]))
-    } else {
-      console.error(`[UNO Asset Missing]: Could not find any files matching "${filenamePattern}"`)
-    }
-  }
-
-  // Red
-  add('red_0', 'Red-0.png')
-  add('red_1', 'Red-1.png')
-  add('red_2', 'Red-2.png')
-  add('red_3', 'Red-3.png')
-  add('red_4', 'Red-4.png')
-  add('red_5', 'Red-5.png')
-  add('red_6', 'Red-6.png')
-  add('red_7', 'Red-7.png')
-  add('red_8', 'Red-8.png')
-  add('red_9', 'Red-9.png')
-  add('red_draw2', 'Red Draw2-1.png')
-  add('red_draw2', 'Red Draw2-2.png')
-  add('red_skip', 'Red Skip-1.png')
-  add('red_skip', 'Red Skip-3.png')
-  add('red_reverse', 'Red Reverse-1.png')
-  add('red_reverse', 'Red Reverse2.png')
-  // Fun irregularity from the Blue folder
-  add('red_skip', 'Red Skip-2.png')
-
-  // Green
-  add('green_0', 'Green-0.png')
-  add('green_1', 'Green-1.png')
-  add('green_2', 'Green-2.png')
-  add('green_3', 'Green-3.png')
-  add('green_4', 'Green-4.png')
-  add('green_5', 'Green-5.png')
-  add('green_6', 'Green-6.png')
-  add('green_7', 'Green-7.png')
-  add('green_8', 'Green-8.png')
-  add('green_9', 'Green-9.png')
-  add('green_draw2', 'Green Draw2-1.png')
-  add('green_draw2', 'Green Draw2-2.png')
-  add('green_draw2', 'Green Draw2-8.png') // From Yellow folder
-  add('green_skip', 'Green Skip- 1.png')
-  add('green_skip', 'Green Skip- 2.png')
-  add('green_reverse', 'Green Reverse-1.png')
-  add('green_reverse', 'Green Reverse-2.png')
-
-  // Blue
-  add('blue_0', 'Blue-0.png')
-  add('blue_1', 'Blue-1.png')
-  add('blue_2', 'Blue-2.png')
-  add('blue_3', 'Blue-3.png')
-  add('blue_4', 'Blue-4.png')
-  add('blue_5', 'Blue-5.png')
-  add('blue_6', 'Blue-6.png')
-  add('blue_7', 'Blue-7.png')
-  add('blue_8', 'Blue-8.png')
-  add('blue_9', 'Blue-9.png')
-  add('blue_draw2', 'Blue Draw2-1.png')
-  add('blue_draw2', 'Blue Draw2-2.png')
-  add('blue_skip', 'Blue Skip-1.png')
-  add('blue_skip', 'Blue Skip-2.png')
-  add('blue_skip', 'Red Skip-2.png') // Physical filename mistake handling
-  add('blue_reverse', 'Blue Reverse- 1.png')
-  add('blue_reverse', 'Blue Reverse- 2.png')
-
-  // Yellow
-  add('yellow_0', 'Yellow-0.png')
-  add('yellow_1', 'Yellow-1.png')
-  add('yellow_2', 'Yellow-2.png')
-  add('yellow_3', 'Yellow-3.png')
-  add('yellow_4', 'Yellow-4.png')
-  add('yellow_5', 'Yellow-5.png')
-  add('yellow_6', 'Yellow-6.png')
-  add('yellow_7', 'Yellow-7.png')
-  add('yellow_8', 'Yellow-8.png')
-  add('yellow_9', 'Yellow-9.png')
-  add('yellow_draw2', 'Yellow Draw2-2.png')
-  add('yellow_skip', 'Yellow Skip-1.png')
-  add('yellow_skip', 'Yellow Skip-2.png')
-  add('yellow_reverse', 'Yellow Reverse-1.png')
-  add('yellow_reverse', 'Yellow Reverse-2.png')
-
-  // Wild
-  add('wild', 'Wild-1.png')
-  add('wild', 'Wild-2.png')
-  add('wild', 'Wild-3.png')
-  add('wild', 'Wild-4.png')
-
-  add('wild4', 'Draw4-1.png')
-  add('wild4', 'Draw4-2.png')
-  add('wild4', 'Draw4-3.png')
-  add('wild4', 'Draw4-4.png')
-
-  return out
+  return UNO_CARD_MAP
 }
 
 function seatPos(i: number, n: number) {
@@ -535,7 +497,8 @@ function UnoDesktopPage({ lobbyCode, isLoggedIn, userId }: any) {
 }
 
 function UnoMobilePage({ lobbyCode, isLoggedIn, userId }: any) {
-  const sync = useUnoMobileSync(lobbyCode, isLoggedIn, userId)
+  // Rollback mobile experiments: strictly use the single stable desktop hook
+  const sync = useUnoDesktopSync(lobbyCode, isLoggedIn, userId)
   return <UnoUI lobbyCode={lobbyCode} isLoggedIn={isLoggedIn} userId={userId} sync={sync} isMobile={true} />
 }
 
@@ -546,7 +509,7 @@ function UnoUI({ lobbyCode, isLoggedIn, userId, sync, isMobile }: {
   lobbyCode: string
   isLoggedIn: boolean
   userId: string | undefined
-  sync: ReturnType<typeof useUnoDesktopSync> | ReturnType<typeof useUnoMobileSync>
+  sync: ReturnType<typeof useUnoDesktopSync>
   isMobile: boolean
 }) {
   const { state, setState, connected, error, setError, unoPrompt, setUnoPrompt, oppDrawFlash, setOppDrawFlash, celebration } = sync
@@ -597,8 +560,8 @@ function UnoUI({ lobbyCode, isLoggedIn, userId, sync, isMobile }: {
   const isPublic = !!state?.isPublic
   const me = state?.players.find(p => p.playerId === myPlayerId) || null
   const isSpectator = !!state?.isSpectator
-  const isMyTurn = state?.phase === 'playing' && state?.players[state.currentPlayerIndex]?.playerId === myPlayerId
-  const currentPlayer = state?.players[state.currentPlayerIndex]
+  const isMyTurn = state?.phase === 'playing' && state?.players?.[state?.currentPlayerIndex]?.playerId === myPlayerId
+  const currentPlayer = state?.players?.[state?.currentPlayerIndex] ?? null
   const spectatorCount = state?.spectators?.length ?? 0
 
   const myHand = myPlayerId ? state?.hands?.[myPlayerId] ?? state?.hands?.[String(myPlayerId)] ?? [] : []
@@ -608,7 +571,7 @@ function UnoUI({ lobbyCode, isLoggedIn, userId, sync, isMobile }: {
     const p = new Set<string>()
     if (isMyTurn && state?.phase === 'playing') {
       myHand.forEach((c: UnoCard) => {
-        if (isPlayableCard(c.face, topCard ? topCard.face : null, state.currentColor)) p.add(c.id)
+        if (isPlayableCard(c.face, topCard ? topCard.face : null, state?.currentColor || 'red')) p.add(c.id)
       })
     }
     return p
@@ -893,9 +856,9 @@ function UnoUI({ lobbyCode, isLoggedIn, userId, sync, isMobile }: {
 
 
 
-  const phaseLabel = state.phase === 'lobby' ? 'Waiting in Lobby' : state.phase === 'playing' ? 'In Progress' : 'Game Over'
-  const colorLabel = state.currentColor ? state.currentColor.charAt(0).toUpperCase() + state.currentColor.slice(1) : 'None'
-  const dirLabel = state.direction === 1 ? 'Clockwise' : 'Counter-Clockwise'
+  const phaseLabel = state?.phase === 'lobby' ? 'Waiting in Lobby' : state?.phase === 'playing' ? 'In Progress' : 'Game Over'
+  const colorLabel = state?.currentColor ? state.currentColor.charAt(0).toUpperCase() + state.currentColor.slice(1) : 'None'
+  const dirLabel = state?.direction === 1 ? 'Clockwise' : 'Counter-Clockwise'
 
   if (!connected || !state) {
     return (
